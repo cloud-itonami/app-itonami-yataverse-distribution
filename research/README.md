@@ -290,3 +290,37 @@ flatfsのlayoutはmultihash/base32/next-to-last-2限定。未知のlayout・hash
 - [Azure LRC, USENIX ATC 2012](https://www.microsoft.com/en-us/research/publication/erasure-coding-in-windows-azure-storage/): 冗長容量と修復readの両立。
 
 初期成果は既存研究を組み合わせた再現可能な試験基盤。新規アルゴリズムの優位性、全量最適性、耐久性SLAの資格は今後の実測で判断する。
+
+
+## 全量の暗号化永続custodyと隔離復旧試験
+
+`custody_build.cljk` は既存のCID付き元バイトを読むだけで、今回専用のAES-256-GCM鍵を使い、圧縮パックを暗号化して(6,4)断片を専用領域へ永続保存する。各ファイル・ディレクトリをfsyncし、48GiBの空き容量余裕を下回ると停止する。既存サービスの停止、WAN設定変更、pin解除、元データ削除、本番鍵の読み出しは行わない。
+
+`custody_finalize.cljk` は全CIDの検証完了を要求し、inventory、パック台帳、CID→window→pack索引、鍵の指紋、復号ソフトのSHAを結び付けた研究用Ed25519署名rootを作る。索引・鍵・メタデータ・復号ソフトは各拠点に3コピー。署名rootの信頼SHAと公開鍵はパックとは別に固定する。今回の署名鍵は本番lake writer鍵ではない。暗号鍵コピーのファイル権限は600、controlディレクトリは700。鍵そのものをログ・Git・報告へ出さない。
+
+`custody_campaign.cljk` は逐次実行し、各工程の状態とログSHAを残す。Xavierはnice 19 / ionice idle / 単一zstd worker、SSH転送は最大16MiB/s。初期保存の全量カバレッジと2拠点の永続読戻しが通らなければ、全量WAN復元へ進まない。失敗した専用領域も保持し、既存領域を上書きしない。
+
+全量WAN試験は生存拠点だけから取得する。断片0/1、controlコピー0、全索引ファイルをexporterが読まない。生存拠点の鍵コピー2とメタデータコピー2を使い、受信側の新しいプロセスが復号・展開・全CID検証を実施する。パック内容から索引を再構築し、署名rootの索引SHAに一致させる。復元した暗号化パックから修復側の全6断片・全3メタデータ/鍵/索引コピーを新しい専用領域へ再生成する。
+
+`custody_audit.cljk` は独立したプロセスで全6断片、全3control、全3パックmetadata/receiptをfsync・読戻し検証する。Jacobへの復元では元バイト全量を単一の復元アーカイブとCID/offset索引へ保存し、後の独立監査が全window SHAと全CIDを再検証する。Xavier側は空き容量を保つため元バイトをストリーム復元・照合し、修復ECを永続保存する。いずれも元lakeを復元時に読まない。
+
+これは物理WAN停止・電源断ではなく、試験readerの入力制限で障害を注入する。共有ホストの性能に全く影響しないと断言するものではない。低優先度I/O/CPUと転送上限を使い、Xavierの既存Kubo version応答を10秒間隔で記録する。このプローブは全サービスのread/write保証ではない。WAN/ルーター/電源の独立性、常時scrub、自動修復、アクセス制御と鍵更新、信頼rootの長期custody、11-ninesの資格化は別途確認が必要。
+
+実行手順は新規の専用パスを使用する。生成鍵を表示せず、既存の本番鍵を入力にしない。
+
+```sh
+node custody_test.cljk /absolute/new/study-fixture
+node custody_build.cljk --inventory /absolute/frozen.jsonl --sha256 INVENTORY_SHA --flatfs /absolute/blocks --raw /absolute/raw --out /absolute/new/custody --key /absolute/study-data-key.bin --zstd-workers 0
+node custody_finalize.cljk /absolute/custody /absolute/frozen.jsonl /absolute/study-data-key.bin /absolute/study-signing.pem /absolute/new/trust.json
+node custody_audit.cljk /absolute/custody /absolute/trust.json /absolute/new/audit.json
+# exporter/receiverは異なる拠点のSSH接続で結び、stdin/stdoutのバイナリをログに出さない。
+node custody_export.cljk /absolute/survivor/custody /absolute/trust.json degraded 16 | node custody_restore.cljk /absolute/trust.json /absolute/new/repair raw
+node custody_campaign.cljk /absolute/private-sites-config.json /absolute/new/campaign-state
+node custody_tco.cljk /absolute/completed-campaign/report.json /absolute/telemetry.jsonl /absolute/user-cost-inputs.json /absolute/new/tco.json
+```
+
+`custody_test.cljk` は複数パックをまたぐ18MiB超の元ブロックで、暗号認証、署名root信頼、主鍵/索引/metadataと2断片消失、索引再構築、全CID復元、修復読戻し、誤鍵拒否、ストリーム切断拒否を検証する。16 checks。費用算式は合成telemetryと実fixture容量で6 assertionsを検証した。これらのfixture試験と実lake全量の完了証拠を区別する。
+
+`custody_telemetry.cljk` は[NVIDIA公式のAGX Xavierレール定義](https://docs.nvidia.com/jetson/archives/r35.6.4/DeveloperGuide/SD/PlatformPowerAndPerformance/JetsonXavierNxSeriesAndJetsonAgxXavierSeries.html)に沿ってGPU/CPU/SOC/CV/VDDRQ/SYS5Vを読む。AC電源、電源変換損失、外部ディスクの測定値ではなく、既存処理も含む。Jacobのpowermetricsはパスワードなしの権限がなく、管理者設定は変更しない。
+
+TCOはユーザー提供の購入額（2台合計150,000円）と電気単価27円/kWhを使う。未提供の償却期間・保守時間/単価・AC電力・外部ディスク購入額を測定済みとしない。3/5年の定額償却、2台合計20/40/60W、保守0/0.5/2時間/月×仮定3,000円/時の18ケースで小計を出す。保守0は楽観的な下限であり、実運用工数ゼロの証拠ではない。全ホスト負担と共有容量按分を分け、未知の費用を残した実TCOはnullとする。米ドルとの換算は100/150/200円の感度だけで、実為替レートではない。
