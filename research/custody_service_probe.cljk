@@ -4,7 +4,13 @@ root = pathlib.Path(sys.argv[1])
 port = int(sys.argv[2])
 if port not in (5001, 5002):
     raise ValueError('existing local Kubo port only')
-with (root / 'service-probes.jsonl').open('x') as log:
+resume = sys.argv[3:] == ['--append']
+if sys.argv[3:] and not resume:
+    raise ValueError('only explicit append continuation is supported')
+out = root / 'service-probes.jsonl'
+if resume and not out.is_file():
+    raise ValueError('existing study probe log required')
+with out.open('a' if resume else 'x') as log:
     for _ in range(2160):
         if (root / 'stop-probes').exists():
             break
