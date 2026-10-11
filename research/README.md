@@ -345,3 +345,5 @@ TCOはユーザー提供の購入額（2台合計150,000円）と電気単価27�
 既存Kubo応答はXavierのAPI 5001に加え、Jacobの既存custody設定が使用するAPI 5002で記録する。最初に調べた5001はJacobの実ポートではなかった。サービスの設定・再起動は行わない。復旧ソフトのJavaScript sourceを保存・SHA検証するが、OSとインストール済みNode runtimeのbootstrapは別の前提として残る。
 
 全量転送中に受動監視の6時間上限へ届く可能性が出たため、`custody_observer_restart.cljk` で今回専用のobserverを1つずつ識別し、監視だけを継続した。`--dry-run` で対象PIDを確認し、元コードを保全してから、そのPIDだけを終了し同じログへ明示的な `--append` で追記する。全量receiver、既存サービス、WAN設定は変更しない。旧・新コードと継続前ログのSHA、継続時刻を `observer-restarts.jsonl` に記録する。既存サンプルは保持し、監視の継続境界は10秒間隔の測定として扱う。
+
+Jacobへの初回全量コピーで、研究用receiverだけをnice 19で1秒・10ms間隔サンプリングした。主スレッド63サンプルのうち62がファイル書込みの `write` 呼出し内だった。receiverのCPU使用率が低かった観測と合わせ、この時点では受信側の書込み待ちが速度を制限した可能性がある。共有HDDの他処理や短い観測範囲を含むため、全工程の時間やディスク単独性能へは外挿しない。`results/receiver-write-profile.json` に範囲と元記録SHAを保存する。小さいfixtureの連続断片形式の結果だけで、全lakeのHDD速度を予測しない。
