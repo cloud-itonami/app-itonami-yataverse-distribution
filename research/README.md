@@ -294,7 +294,7 @@ flatfsのlayoutはmultihash/base32/next-to-last-2限定。未知のlayout・hash
 
 ## 全量の暗号化永続custodyと隔離復旧試験
 
-初回全量保存とWANコピーは完了し、両ノードの全断片/controlの独立読戻しも合格した。凍結epoch6の825,390 CID / 91,395,086,102 bytesが欠損0で対象になった。署名root SHAは`7a4fb7430b599ea594dc9a11415a0d1ae074554f71f3b7fe54269363f7f4d3c6`。両方向の追加修復campaignは進行中で、完了報告とは分ける。
+初回全量保存とWANコピーは完了し、両ノードの全断片/controlの独立読戻しも合格した。凍結epoch6の825,390 CID / 91,395,086,102 bytesが欠損0で対象になった。署名root SHAは`7a4fb7430b599ea594dc9a11415a0d1ae074554f71f3b7fe54269363f7f4d3c6`。Jacobのみを復旧元とするXavier側の全量ストリーム復元・EC修復と独立読戻しも完了した。Xavierのみを復旧元とするJacob側の全量元バイト保存・独立監査は進行中で、完了報告とは分ける。
 
 | 完了済み実測 | bytes / 時間 |
 |---|---:|
@@ -338,7 +338,7 @@ node custody_campaign.cljk /absolute/private-sites-config.json /absolute/new/cam
 node custody_tco.cljk /absolute/completed-campaign/report.json /absolute/telemetry.jsonl /absolute/user-cost-inputs.json /absolute/new/tco.json
 ```
 
-`custody_test.cljk` は複数パックをまたぐ18MiB超の元ブロックで、暗号認証、署名root信頼、主鍵/索引/metadataと2断片消失、索引再構築、全CID復元、修復読戻し、誤鍵拒否、ストリーム切断拒否を検証する。24 checks（復号コードのSHA変化と鍵ファイル権限の拒否、tape形式の2断片・主metadata・主鍵・全索引ファイルの実欠損からの再復元、復元アーカイブ用の補助offset索引の照合と改変拒否も含む）。費用算式は合成telemetryと実fixture容量で8 assertionsを検証した。これらのfixture試験と実lake全量の完了証拠を区別する。
+`custody_test.cljk` は複数パックをまたぐ18MiB超の元ブロックで、暗号認証、署名root信頼、主鍵/索引/metadataと2断片消失、索引再構築、全CID復元、修復読戻し、誤鍵拒否、ストリーム切断拒否を検証する。現行fixtureは31 checksで、同一ノードのhardlinkによる署名済みsource-view作成、元controlの不変性、全断片再監査も含む（復号コードのSHA変化と鍵ファイル権限の拒否、tape形式の2断片・主metadata・主鍵・全索引ファイルの実欠損からの再復元、復元アーカイブ用の補助offset索引の照合と改変拒否も含む）。費用算式は合成telemetryと実fixture容量で8 assertionsを検証した。これらのfixture試験と実lake全量の完了証拠を区別する。
 
 Macのsandbox内で既定タイムゾーンを初期化する際にNodeがOS通知サービス待ちになる実行があった。停止した今回のfixtureだけを保全・終了し、新しいfixtureへ `TZ=UTC` を指定して24 checksを通した。署名rootの日時はUTCのISO表記を使い、OS設定は変更しない。未実行の監査には補助offset索引の全行照合を追加し、初回Xavier監査で使った旧コードも保全した。新しい監査報告は開始時に取得した監査コードSHAを含む。稼働中のbuilder・exporter・receiverと署名済み復号assetは変更しない。
 
@@ -356,7 +356,7 @@ TCOはユーザー提供の購入額（2台合計150,000円）と電気単価27�
 
 クラウドの容量対照にも暗号化圧縮本体と1論理セットの索引・inventory・root・復号ソフト・鍵を含める。自前の必要custody容量と、研究の監査台帳・修復用コピー・復元アーカイブを含む実占有容量を分けて集計する。
 
-割当量は通常ファイルの `stat.blocks` で、ディレクトリ・inode・journal・空き容量余裕の管理領域を含まない。研究用占有量の集計範囲は全量campaignの4つのcustody/repair領域で、元lake、以前の小試験、ローカルLLMモデル・runtime・controllerファイルは別途保持している。今回のSSH経路はcontrollerを中継するため、そのホストの電力・設備按分、研究開発の作業費・モデル/API費も未確定費用として残す。
+割当量は通常ファイルの `stat.blocks` で、ディレクトリ・inode・journal・空き容量余裕の管理領域を含まない。TCOの資格済み保存領域の集計範囲は全量campaignの4つのcustody/repair領域である。全研究領域の占有量は `custody_study_allocation.cljk` で別途集計し、保全した未完了試験、source-view、runtimeとログも含める。同一dev/inodeのhardlinkは一度だけ数え、鍵の内容は読まない。元lake、ローカルLLMモデル・controllerファイルはこの遠隔研究領域の外に保持している。今回のSSH経路はcontrollerを中継するため、そのホストの電力・設備按分、研究開発の作業費・モデル/API費も未確定費用として残す。
 
 
 ### HDD向け連続断片形式
@@ -370,3 +370,11 @@ TCOはユーザー提供の購入額（2台合計150,000円）と電気単価27�
 全量転送中に受動監視の6時間上限へ届く可能性が出たため、`custody_observer_restart.cljk` で今回専用のobserverを1つずつ識別し、監視だけを継続した。`--dry-run` で対象PIDを確認し、元コードを保全してから、そのPIDだけを終了し同じログへ明示的な `--append` で追記する。全量receiver、既存サービス、WAN設定は変更しない。旧・新コードと継続前ログのSHA、継続時刻を `observer-restarts.jsonl` に記録する。既存サンプルは保持し、監視の継続境界は10秒間隔の測定として扱う。
 
 Jacobへの初回全量コピーで、研究用receiverだけをnice 19で1秒・10ms間隔サンプリングした。主スレッド63サンプルのうち62がファイル書込みの `write` 呼出し内だった。receiverのCPU使用率が低かった観測と合わせ、この時点では受信側の書込み待ちが速度を制限した可能性がある。共有HDDの他処理や短い観測範囲を含むため、全工程の時間やディスク単独性能へは外挿しない。`results/receiver-write-profile.json` に範囲と元記録SHAを保存する。小さいfixtureの連続断片形式の結果だけで、全lakeのHDD速度を予測しない。
+
+新しいreceiverは索引2種を256KiB、元バイトを4MiBの単位へまとめて書く。短い書込みの再試行を処理し、全バッファをflushしてからfsyncと完了報告を行う。4,098 CID（4,096個の128-byteブロックとテキスト、18MiB超ブロック）のローカルfixtureで全量バイト一致、署名索引一致、独立offset監査、改変と切断の拒否を検証した。`results/buffered-write-fixture.json` に論理書込み数と実write呼出し数を記録する。これはローカルfixtureの測定で、全lake・WAN・Jacob HDDの速度向上を示さない。ローカルfixtureのnice指定はsandboxで拒否されたため通常優先度で実行した。遠隔研究プロセスの優先度設定とは分ける。
+
+旧campaignのJacob元バイト保存試験は1,000パック / 16,135,666,517 bytesまでで退役し、未完了ファイルを保全した。専用receiver・exporterとそのSSHクライアントだけを所有者とargvで特定して終了した。既存サービス、元lake、元custody、WAN設定を変更しない。旧campaignは失敗状態のまま保持し、全量完了とは呼ばない。
+
+`custody_source_view.cljk` は全量監査済みの暗号化パックを同じノードでhardlinkし、新しいreceiverだけを署名assetとして更新したcontrolを別領域へ作る。元controlは保持する。これを追加の物理レプリカとは数えない。新しいsource-viewの全断片/control読戻しは合格した。旧rootは `7a4fb7430b599ea594dc9a11415a0d1ae074554f71f3b7fe54269363f7f4d3c6`、新rootは `b94da2fe580193e16fd1e2732d522c2dc7631ffc7df82b106e22721dcf303a64`。署名公開鍵、inventory、catalog、索引、暗号化形式、データ鍵SHAと他の復号assetは一致する。両rootの互換性を全量監査とともに記録し、進行中のプロセスのコードは差し替えない。
+
+`custody_buffered_campaign.cljk` は資格済みの初回全量コピー・両元custody監査・Xavier修復を引き継ぎ、新rootでJacobへの全量元バイト保存と全CID/offset独立読戻しを行う。新旧受信側の全量バイトSHA一致も完了条件にする。Jacobはnice 19とbackground I/Oを維持する。最初の100パックは約402秒で、旧試験の約261秒より遅かった。書込み呼出し数削減から実リンク速度向上を推定せず、全量完了時間と監査時間を別途測定する。
