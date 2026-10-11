@@ -34,4 +34,6 @@
   "research/custody_telemetry.cljk" ".py"
   "research/custody_rate.cljk" ".js"
   "research/custody_campaign.cljk" ".js"
-  "research/custody_tco.cljk" ".js"}}
+  "research/custody_tco.cljk" ".js"
+  "research/custody_tapes.cljk" ".js"
+  "research/custody_service_probe.cljk" ".py"}}
