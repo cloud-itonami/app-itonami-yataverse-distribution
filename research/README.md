@@ -309,7 +309,7 @@ flatfsのlayoutはmultihash/base32/next-to-last-2限定。未知のlayout・hash
 実行手順は新規の専用パスを使用する。生成鍵を表示せず、既存の本番鍵を入力にしない。
 
 ```sh
-node custody_test.cljk /absolute/new/study-fixture
+TZ=UTC node custody_test.cljk /absolute/new/study-fixture
 node custody_build.cljk --inventory /absolute/frozen.jsonl --sha256 INVENTORY_SHA --flatfs /absolute/blocks --raw /absolute/raw --out /absolute/new/custody --key /absolute/study-data-key.bin --zstd-workers 0
 node custody_finalize.cljk /absolute/custody /absolute/frozen.jsonl /absolute/study-data-key.bin /absolute/study-signing.pem /absolute/new/trust.json
 node custody_audit.cljk /absolute/custody /absolute/trust.json /absolute/new/audit.json
@@ -319,7 +319,9 @@ node custody_campaign.cljk /absolute/private-sites-config.json /absolute/new/cam
 node custody_tco.cljk /absolute/completed-campaign/report.json /absolute/telemetry.jsonl /absolute/user-cost-inputs.json /absolute/new/tco.json
 ```
 
-`custody_test.cljk` は複数パックをまたぐ18MiB超の元ブロックで、暗号認証、署名root信頼、主鍵/索引/metadataと2断片消失、索引再構築、全CID復元、修復読戻し、誤鍵拒否、ストリーム切断拒否を検証する。22 checks（復号コードのSHA変化と鍵ファイル権限の拒否、tape形式の2断片・主metadata・主鍵・全索引ファイルの実欠損からの再復元も含む）。費用算式は合成telemetryと実fixture容量で8 assertionsを検証した。これらのfixture試験と実lake全量の完了証拠を区別する。
+`custody_test.cljk` は複数パックをまたぐ18MiB超の元ブロックで、暗号認証、署名root信頼、主鍵/索引/metadataと2断片消失、索引再構築、全CID復元、修復読戻し、誤鍵拒否、ストリーム切断拒否を検証する。24 checks（復号コードのSHA変化と鍵ファイル権限の拒否、tape形式の2断片・主metadata・主鍵・全索引ファイルの実欠損からの再復元、復元アーカイブ用の補助offset索引の照合と改変拒否も含む）。費用算式は合成telemetryと実fixture容量で8 assertionsを検証した。これらのfixture試験と実lake全量の完了証拠を区別する。
+
+Macのsandbox内で既定タイムゾーンを初期化する際にNodeがOS通知サービス待ちになる実行があった。停止した今回のfixtureだけを保全・終了し、新しいfixtureへ `TZ=UTC` を指定して24 checksを通した。署名rootの日時はUTCのISO表記を使い、OS設定は変更しない。未実行の監査には補助offset索引の全行照合を追加し、初回Xavier監査で使った旧コードも保全した。新しい監査報告は開始時に取得した監査コードSHAを含む。稼働中のbuilder・exporter・receiverと署名済み復号assetは変更しない。
 
 `custody_telemetry.cljk` は[NVIDIA公式のAGX Xavierレール定義](https://docs.nvidia.com/jetson/archives/r35.6.4/DeveloperGuide/SD/PlatformPowerAndPerformance/JetsonXavierNxSeriesAndJetsonAgxXavierSeries.html)に沿ってGPU/CPU/SOC/CV/VDDRQ/SYS5Vを読む。AC電源、電源変換損失、外部ディスクの測定値ではなく、既存処理も含む。Jacobのpowermetricsはパスワードなしの権限がなく、管理者設定は変更しない。
 
@@ -334,6 +336,8 @@ TCOはユーザー提供の購入額（2台合計150,000円）と電気単価27�
 全ホスト負担の償却小計は残存価額0の仮定で月2,500円（5年）または4,166.67円（3年）。合計20/40/60Wの仮定では電力小計が月394.20/788.40/1,182.60円となる（730時間/月）。保守の仮定は月0/1,500/6,000円。これらを合計した月2,894.20–11,349.27円は感度分析の小計で、外部ディスク、回線、交換予備、保証維持などの未確定費用を含む実TCOではない。購入日は入力の出所として保存し、この試算を税務上の償却判定には使わない。
 
 クラウドの容量対照にも暗号化圧縮本体と1論理セットの索引・inventory・root・復号ソフト・鍵を含める。自前の必要custody容量と、研究の監査台帳・修復用コピー・復元アーカイブを含む実占有容量を分けて集計する。
+
+割当量は通常ファイルの `stat.blocks` で、ディレクトリ・inode・journal・空き容量余裕の管理領域を含まない。研究用占有量の集計範囲は全量campaignの4つのcustody/repair領域で、元lake、以前の小試験、ローカルLLMモデル・runtime・controllerファイルは別途保持している。今回のSSH経路はcontrollerを中継するため、そのホストの電力・設備按分、研究開発の作業費・モデル/API費も未確定費用として残す。
 
 
 ### HDD向け連続断片形式
