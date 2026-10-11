@@ -37,4 +37,5 @@
   "research/custody_tco.cljk" ".js"
   "research/custody_tapes.cljk" ".js"
   "research/custody_service_probe.cljk" ".py"
-  "research/custody_observer_restart.cljk" ".py"}}
+  "research/custody_observer_restart.cljk" ".py"
+  "research/custody_io_guard.cljk" ".py"}}

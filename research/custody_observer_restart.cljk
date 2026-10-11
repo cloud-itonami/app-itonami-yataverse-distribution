@@ -30,7 +30,10 @@ for line in subprocess.check_output(['ps', '-axo', 'pid=,args='], text=True).spl
         args = shlex.split(command)
     except ValueError:
         continue
-    if len(args) != (3 if kind == 'telemetry' else 4) or not pathlib.Path(args[0]).name.lower().startswith('python'):
+    expected = 3 if kind == 'telemetry' else 4
+    if len(args) not in (expected, expected + 1) or not pathlib.Path(args[0]).name.lower().startswith('python'):
+        continue
+    if len(args) == expected + 1 and args[-1] != '--append':
         continue
     if args[1] not in (str(script), 'runtime/' + name) or args[2] not in (str(root), '.'):
         continue
@@ -39,14 +42,14 @@ for line in subprocess.check_output(['ps', '-axo', 'pid=,args='], text=True).spl
     if args[2] == '.':
         if sys.platform != 'linux' or pathlib.Path('/proc/' + pid + '/cwd').resolve() != root:
             continue
-    candidates.append(int(pid))
+    candidates.append((int(pid), len(args) == expected + 1))
 if len(candidates) != 1:
     raise ValueError('exactly one original study observer required: ' + str(candidates))
-pid = candidates[0]
+pid, already_append = candidates[0]
 if dry:
     print(json.dumps({'kind': kind, 'pid': pid, 'dryRun': True}))
     sys.exit(0)
-before = root / 'runtime' / (name[:-5] + '.before-append.cljk')
+before = script if already_append else root / 'runtime' / (name[:-5] + '.before-append.cljk')
 if not before.is_file():
     raise ValueError('original observer code snapshot required')
 os.kill(pid, signal.SIGTERM)
@@ -60,7 +63,7 @@ os.nice(19)
 data = log.read_bytes()
 if not data.endswith(b'\n'):
     raise ValueError('stopped observer left incomplete sample')
-with (root / ('observer-' + kind + '-append.log')).open('x') as output:
+with (root / ('observer-' + kind + '-append-' + str(time.time_ns()) + '.log')).open('x') as output:
     args = [sys.executable, str(script), str(root)] + ([] if kind == 'telemetry' else ['5002']) + ['--append']
     child = subprocess.Popen(args, cwd=root, stdin=subprocess.DEVNULL, stdout=output, stderr=output, start_new_session=True)
     time.sleep(0.25)

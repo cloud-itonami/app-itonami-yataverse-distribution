@@ -150,7 +150,7 @@ SSH経由で残る4断片とバックアップマニフェストを読み、元l
 欠損側への7.36MB修復書込みは約4.42–6.72秒、その後全断片読戻しは約2.93–3.99秒（メタデータ読戻し時間は別）。
 
 これは **実リンク上でクライアントが欠損拠点を使わない注入試験** で、物理WANを停止していない。
-2拠点のWAN独立性は既存構成の申告を前提とする。外部IPのtrace確認は自動承認審査で拒否されたため実施しなかった。
+2026-10-11のユーザー回答は「一部を共有、または独立性は未確認」。2台の物理ノードの保存と片ノードからの復旧を評価するが、独立したWAN・ルーター・電源を持つ2障害ドメインとしては資格化しない。外部IPのtrace確認は自動承認審査で拒否されたため実施しなかった。
 キャッシュを強制破棄していない。全lakeのWAN復元時間へ線形外挿しない。`results/wan-trial.json` に数値と前提を保存。
 
 R2/B2の[公称11 nines](https://developers.cloudflare.com/r2/reference/durability/)は[年間耐久性の設計値](https://help.backblaze.com/hc/en-us/articles/218485257-B2-Resiliency-Durability-and-Availability)。
@@ -304,7 +304,9 @@ flatfsのlayoutはmultihash/base32/next-to-last-2限定。未知のlayout・hash
 
 `custody_audit.cljk` は独立したプロセスで全6断片、全3control、全3パックmetadata/receiptをfsync・読戻し検証する。Jacobへの復元では元バイト全量を単一の復元アーカイブとCID/offset索引へ保存し、後の独立監査が全window SHAと全CIDを再検証する。Xavier側は空き容量を保つため元バイトをストリーム復元・照合し、修復ECを永続保存する。いずれも元lakeを復元時に読まない。
 
-これは物理WAN停止・電源断ではなく、試験readerの入力制限で障害を注入する。共有ホストの性能に全く影響しないと断言するものではない。低優先度I/O/CPUと転送上限を使い、Xavierの既存Kubo version応答を10秒間隔で記録する。このプローブは全サービスのread/write保証ではない。WAN/ルーター/電源の独立性、常時scrub、自動修復、アクセス制御と鍵更新、信頼rootの長期custody、11-ninesの資格化は別途確認が必要。
+これは物理WAN停止・電源断ではなく、試験readerの入力制限で障害を注入する。共有ホストの性能に全く影響しないと断言するものではない。低優先度I/O/CPUと転送上限を使い、両ノードの既存Kubo version応答を10秒間隔で記録する。このプローブは全サービスのread/write保証ではない。ユーザー回答によりWAN・ルーター・電源の独立性は未確認または一部共有と扱う。常時scrub、自動修復、アクセス制御と鍵更新、信頼rootの長期custody、11-ninesの資格化も未完了。
+
+初回Jacobコピーと読戻しの途中集計ではversion APIの失敗は0だったが、応答p95がbaseline約2.09msからコピー約29.53ms、監査約425.01msへ増加した。共有ホスト上の別負荷もあるため原因を断定しないが、無影響とは判定しない。`custody_io_guard.cljk` は専用研究rootのNode audit/restore/exportプロセスだけをPIDとargvで照合し、macOSの`taskpolicy -b`でI/O優先度を下げる。研究用以外のプロセスやサービス設定を変更しない。初回コピー・監査はnice 19、以後のJacob exporterからバックグラウンドI/Oが適用されたため、工程間の速度比較は同じ優先度条件ではない。適用時刻と対象PIDは専用rootの`io-policy-events.jsonl`に記録する。
 
 実行手順は新規の専用パスを使用する。生成鍵を表示せず、既存の本番鍵を入力にしない。
 
