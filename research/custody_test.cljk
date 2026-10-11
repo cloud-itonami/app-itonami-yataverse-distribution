@@ -18,6 +18,9 @@ const stream=run('custody_export.cljk',[built,trust,'degraded','32']);assert.equ
 const restored=path.join(root,'restored');r=run('custody_restore.cljk',[trust,restored,'raw'],stream.stdout);assert.equal(r.status,0,r.stderr?.toString());checks++;assert.deepEqual(fs.readFileSync(path.join(restored,'restored-lake.bin')),Buffer.concat(data));checks++;
 const report=JSON.parse(fs.readFileSync(path.join(restored,'restore-report.json')));assert.equal(report.verifiedBlocks,2);assert.equal(report.indexSupplied,false);checks+=2;
 r=run('custody_audit.cljk',[restored,trust,path.join(root,'audit.json')]);assert.equal(r.status,0,r.stderr?.toString());checks++;
+const drift=path.join(root,'drift-runtime');fs.mkdirSync(drift);for(const name of ['custody_restore.cljk','custody_common.cljk','stream_codec.cljk'])fs.copyFileSync(path.join(__dirname,name),path.join(drift,name));fs.appendFileSync(path.join(drift,'custody_common.cljk'),'\n// fixture runtime drift\n');
+r=cp.spawnSync(process.execPath,[path.join(drift,'custody_restore.cljk'),trust,path.join(root,'wrong-runtime')],{input:stream.stdout});assert.notEqual(r.status,0);checks++;
+const restoredKey=path.join(restored,'control/2/data-key.bin');fs.chmodSync(restoredKey,0o644);r=run('custody_audit.cljk',[restored,trust,path.join(root,'bad-permissions.json')]);assert.notEqual(r.status,0);checks++;fs.chmodSync(restoredKey,0o600);
 // Wrong survivor key and damaged frame are rejected before completion.
 fs.writeFileSync(path.join(built,'control/2/data-key.bin'),crypto.randomBytes(32));const wrong=run('custody_export.cljk',[built,trust,'degraded','32']);r=run('custody_restore.cljk',[trust,path.join(root,'wrong-key')],wrong.stdout);assert.notEqual(r.status,0);assert.equal(fs.existsSync(path.join(root,'wrong-key/restore-report.json')),false);checks+=2;
 r=run('custody_restore.cljk',[trust,path.join(root,'truncated')],stream.stdout.subarray(0,stream.stdout.length-20));assert.notEqual(r.status,0);checks++;
