@@ -4,7 +4,7 @@
 CID's replicas live, bridge the plan into the p2p exchange semantics the
 stack already ships, and name the e2e delivery path end to end.**
 
-`yataverse.com` is the decentralized mirror zone of the kotobase bytes
+`yataverse.com` is the decentralized mirror zone of the yataverse bytes
 plane (ADR-2609131630, com-junkawasaki root). One Worker serves both
 `{cid}.ipfs.kotobase.net` and `{cid}.ipfs.yataverse.com` from one R2
 bucket — the zone is a Location, not a second implementation. This repo
