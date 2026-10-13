@@ -1,7 +1,7 @@
 (ns yataverse.distribution.planner
   "Geo-aware replication planning for the yataverse.com bytes plane.
 
-  yataverse.com is the decentralized mirror zone of the kotobase bytes plane
+  yataverse.com is the decentralized mirror zone of the yataverse bytes plane
   (ADR-2609131630). This namespace decides WHERE a CID's replicas should live:
   it takes the murakumo fleet's node inventory (each node already carries
   `:labels {:tier ... :zone ...}` in fleet.edn) plus the desired replication
