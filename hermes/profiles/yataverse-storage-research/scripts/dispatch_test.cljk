@@ -1,0 +1,49 @@
+#!/usr/bin/env python3
+"""Synthetic guard regression; never contacts a model or real identity store."""
+import argparse, json, runpy, time
+from pathlib import Path
+import yaml
+p = argparse.ArgumentParser(); p.add_argument("--scratch", required=True); args = p.parse_args()
+base = Path(args.scratch).resolve()
+if base.exists() or "/github/workspaces/" not in str(base):
+    raise ValueError("new scratch directory under github/workspaces required")
+base.mkdir(parents=True)
+m = runpy.run_path(str(Path(__file__).with_name("dispatch.cljk")))
+home = base / ".hermes/profiles/yataverse-storage-research"
+w = home / "workspace"; w.mkdir(parents=True)
+work = base / "github/wt/codex/fixture"; work.mkdir(parents=True)
+config = {"model": {"provider": "murakumo", "base_url": m["DESTINATION"], "default": m["MODEL"]}}
+(home / "config.yaml").write_text(yaml.safe_dump(config)); files = []
+for i in range(4):
+    path = base / ("evidence-" + str(i) + ".json"); path.write_text(json.dumps({"fixture": i}))
+    files.append({"path": str(path), "sha256": m["digest"](path)})
+(w / "HANDOFF.md").write_text("synthetic fixture only")
+(w / "handoff-evidence.json").write_text(json.dumps({"files": files}))
+(w / "tick-prompt.txt").write_text("synthetic prompt")
+policy = {"approved": True, "destination": m["DESTINATION"], "model": m["MODEL"],
+          "workdir": str(work), "evidence": files, "handoff_sha": m["digest"](w / "HANDOFF.md"),
+          "manifest_sha": m["digest"](w / "handoff-evidence.json"), "prompt_sha": m["digest"](w / "tick-prompt.txt")}
+pp = w / "dispatch-policy.json"
+def write(): pp.write_text(json.dumps(policy))
+def rejected():
+    try: m["validate"](pp, base)
+    except ValueError: return True
+    return False
+checks = 0; write(); assert m["validate"](pp, base)[2] == w; checks += 1
+policy["approved"] = False; write(); assert rejected(); checks += 1
+policy["approved"] = True; write()
+(w / "HANDOFF.md").write_text("changed"); assert rejected(); checks += 1
+(w / "HANDOFF.md").write_text("synthetic fixture only")
+config["model"]["default"] = "other"; (home / "config.yaml").write_text(yaml.safe_dump(config))
+assert rejected(); checks += 1
+config["model"]["default"] = m["MODEL"]; (home / "config.yaml").write_text(yaml.safe_dump(config))
+assert not m["completed"](w, time.time_ns(), 0); checks += 1
+began = time.time_ns() - 10000000
+(w / "status.json").write_text(json.dumps({"manifest_verified": True, "evidence_files_checked": 4}))
+(w / "EXPERIMENT_PLAN.md").write_text("synthetic plan")
+assert m["completed"](w, began, 0); checks += 1
+assert not m["completed"](w, time.time_ns() + 1000000, 0); checks += 1
+result = {"checks": checks, "passed": True, "codeSHA": m["digest"](Path(__file__).with_name("dispatch.cljk")),
+          "scope": "synthetic fixtures only; no model, private handoff or production authentication"}
+(base / "result.json").write_text(json.dumps(result, indent=2) + "\n")
+print(json.dumps(result))

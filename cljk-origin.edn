@@ -7,4 +7,6 @@
   "src/yataverse/distribution/gossip_bridge.cljk" ".cljc"
   "test/yataverse/distribution/planner_test.cljk" ".cljs"
   "test/yataverse/distribution/gossip_bridge_test.cljk" ".cljs"
-  "test/yataverse/distribution/test_runner.cljk" ".cljs"}}
+  "test/yataverse/distribution/test_runner.cljk" ".cljs"
+  "hermes/profiles/yataverse-storage-research/scripts/dispatch.cljk" ".py"
+  "hermes/profiles/yataverse-storage-research/scripts/dispatch_test.cljk" ".py"}}

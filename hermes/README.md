@@ -14,3 +14,17 @@ The shipped schedule starts disabled. Activation requires a scoped private-data/
 a valid Itonami human session for Bot registration, and a verified first turn. The host-private
 handoff may contain internal evidence; source-profile merge does not authorize sending it to a model.
 A missing multiplex gateway is not permission to start unrelated bots.
+
+## Profile-only retry dispatcher
+
+`profiles/yataverse-storage-research/scripts/dispatch.cljk` can make one bounded native-agent attempt without starting the shared
+Hermes gateway. An operator installs a profile-specific timer only after explicit private-input/provider
+consent. The shipped cron remains disabled to avoid duplicate execution. A failed or timed-out attempt
+is recorded as waiting-provider-or-agent, never completed; research qualification still needs a real
+first turn. The dispatcher checks four approved evidence hashes, HANDOFF/manifest/prompt hashes,
+provider/model metadata, a dedicated worktree, and an exclusive per-profile lock. It applies low
+priority and a 240-second outer process-group timeout. A local STOP_DISPATCH marker stops new attempts.
+
+The private operator policy and launch service stay on the host. These consistency checks are not
+a new authentication authority or a filesystem sandbox. Test-auth sessions are never installed into
+the real Itonami account. Credentials remain handled by the existing native wrapper.

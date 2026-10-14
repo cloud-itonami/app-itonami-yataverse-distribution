@@ -11,6 +11,9 @@ providers:
     key_env: MURAKUMO_FLEET_API_KEY
     stale_timeout_seconds: 120
     request_timeout_seconds: 180
+    extra_body:
+      chat_template_kwargs:
+        enable_thinking: false
 fallback_providers: []
 agent:
   max_turns: 12

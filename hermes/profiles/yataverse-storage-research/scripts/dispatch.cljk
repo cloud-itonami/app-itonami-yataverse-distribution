@@ -1,0 +1,128 @@
+#!/usr/bin/env python3
+"""One profile, operator-approved inputs, one bounded native agent attempt. No gateway."""
+import argparse, datetime, fcntl, hashlib, json, os, signal, subprocess, sys, time, uuid
+from pathlib import Path
+import yaml
+
+PROFILE = "yataverse-storage-research"
+DESTINATION = "https://api.murakumo.cloud/v1"
+MODEL = "mishima"
+
+def digest(path):
+    h = hashlib.sha256()
+    with Path(path).open("rb") as f:
+        for block in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(block)
+    return h.hexdigest()
+
+def validate(policy_path, owner_home=None):
+    owner_home = Path(owner_home or Path.home()).resolve()
+    home = owner_home / ".hermes/profiles" / PROFILE
+    workspace = home / "workspace"
+    if Path(policy_path).resolve() != workspace / "dispatch-policy.json":
+        raise ValueError("dedicated policy path required")
+    policy = json.loads(Path(policy_path).read_text())
+    if policy.get("approved") is not True:
+        raise ValueError("explicit operator approval required")
+    if policy.get("destination") != DESTINATION or policy.get("model") != MODEL:
+        raise ValueError("unapproved destination/model")
+    config = yaml.safe_load((home / "config.yaml").read_text())
+    model = config.get("model", {})
+    if model.get("provider") != "murakumo" or model.get("base_url", "").rstrip("/") != DESTINATION or model.get("default") != MODEL:
+        raise ValueError("profile destination/model drift")
+    managed = policy.get("managed_config")
+    if managed:
+        override = yaml.safe_load(Path(managed).read_text()).get("model", {})
+        if any(override.get(k, v) != v for k, v in [("provider", "murakumo"), ("base_url", DESTINATION), ("default", MODEL)]):
+            raise ValueError("managed destination/model drift")
+    workdir = Path(policy["workdir"]).resolve()
+    if not workdir.is_dir() or not workdir.is_relative_to((owner_home / "github/wt").resolve()):
+        raise ValueError("dedicated Git worktree required")
+    for name, key in [("HANDOFF.md", "handoff_sha"), ("handoff-evidence.json", "manifest_sha")]:
+        if digest(workspace / name) != policy.get(key):
+            raise ValueError("approved handoff/manifest changed")
+    manifest = json.loads((workspace / "handoff-evidence.json").read_text())
+    files = manifest.get("files", [])
+    if len(files) != 4 or files != policy.get("evidence"):
+        raise ValueError("approved four-file evidence scope required")
+    for item in files:
+        if digest(item["path"]) != item["sha256"]:
+            raise ValueError("approved evidence changed")
+    prompt = workspace / "tick-prompt.txt"
+    if digest(prompt) != policy.get("prompt_sha"):
+        raise ValueError("approved prompt changed")
+    return policy, home, workspace, workdir, prompt
+
+def completed(workspace, began_ns, exit_code):
+    status, plan = workspace / "status.json", workspace / "EXPERIMENT_PLAN.md"
+    if exit_code != 0 or not status.exists() or not plan.exists():
+        return False
+    if min(status.stat().st_mtime_ns, plan.stat().st_mtime_ns) < began_ns or not plan.stat().st_size:
+        return False
+    try:
+        data = json.loads(status.read_text())
+    except (ValueError, OSError):
+        return False
+    return data.get("manifest_verified") is True and data.get("evidence_files_checked") == 4
+
+def save_receipt(workspace, receipt):
+    raw = json.dumps(receipt, ensure_ascii=False, indent=2) + "\n"
+    target = workspace / "last-dispatch.json"
+    tmp = workspace / (".receipt-" + uuid.uuid4().hex)
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(raw); f.flush(); os.fsync(f.fileno())
+    os.replace(tmp, target)
+    with (workspace / "dispatch-runs.jsonl").open("a") as f:
+        os.chmod(f.name, 0o600)
+        f.write(json.dumps(receipt, ensure_ascii=False) + "\n"); f.flush(); os.fsync(f.fileno())
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--policy", required=True)
+    parser.add_argument("--preflight-only", action="store_true")
+    args = parser.parse_args()
+    policy, home, workspace, workdir, prompt = validate(args.policy)
+    if (workspace / "STOP_DISPATCH").exists():
+        print(json.dumps({"state": "stopped", "profile": PROFILE})); return 0
+    with (workspace / ".dispatch.lock").open("a") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            print(json.dumps({"state": "busy", "profile": PROFILE})); return 0
+        if args.preflight_only:
+            print(json.dumps({"state": "preflight-verified", "evidenceFiles": 4, "model": MODEL})); return 0
+        began_ns = time.time_ns()
+        stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        log = workspace / ("dispatch-" + stamp + "-" + uuid.uuid4().hex[:8] + ".jsonl")
+        command = [str(Path.home() / ".local/bin/hermes"), "-p", PROFILE, "chat", "--query-file", str(prompt),
+                   "--oneshot", "--format", "stream-json", "--run-budget", "180", "--max-turns", "12", "-t", "terminal,file"]
+        if sys.platform == "darwin":
+            command = ["/usr/sbin/taskpolicy", "-b"] + command
+        fd = os.open(log, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        timeout, exit_code = False, None
+        with os.fdopen(fd, "w") as output:
+            proc = subprocess.Popen(command, cwd=workdir, stdout=output, stderr=output,
+                                    start_new_session=True, preexec_fn=lambda: os.nice(19))
+            try:
+                exit_code = proc.wait(timeout=240)
+            except subprocess.TimeoutExpired:
+                timeout = True
+                # Only the new session created above; no shared model, gateway or other Bot.
+                os.killpg(proc.pid, signal.SIGTERM)
+                try:
+                    exit_code = proc.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    os.killpg(proc.pid, signal.SIGKILL); exit_code = proc.wait()
+        success = completed(workspace, began_ns, exit_code)
+        receipt = {"schema": "yataverse-profile-dispatch/v1", "profile": PROFILE, "startedUTC": stamp,
+                   "state": "completed" if success else "waiting-provider-or-agent", "exitCode": exit_code,
+                   "timedOut": timeout, "seconds": (time.time_ns() - began_ns) / 1e9,
+                   "evidencePreflightVerified": True, "evidenceFiles": 4, "semanticCompletion": success,
+                   "logFile": log.name, "logSHA": digest(log), "scope": "one profile only; no shared gateway; no authentication minting"}
+        save_receipt(workspace, receipt)
+        print(json.dumps(receipt, ensure_ascii=False))
+        return 0 if success else 1
+
+if __name__ == "__main__":
+    sys.exit(main())
