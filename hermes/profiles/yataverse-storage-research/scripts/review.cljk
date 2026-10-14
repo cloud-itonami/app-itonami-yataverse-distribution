@@ -4,7 +4,7 @@
 The model has no executable tools. Only an allowlisted projection of the four
 approved receipts crosses the inference boundary; credentials are HTTP auth only.
 """
-import argparse, datetime, hashlib, json, os, random, runpy, time, urllib.request, zlib
+import argparse, datetime, hashlib, json, os, random, runpy, time, urllib.error, urllib.request, zlib
 from pathlib import Path
 
 def sha(data):
@@ -74,21 +74,19 @@ class NoRedirect(urllib.request.HTTPRedirectHandler):
         raise ValueError('inference redirect refused')
 
 def request_body(facts, experiment):
-    compact = {'historicalEvidence': facts, 'newSyntheticExperiment': experiment}
-    system = ('You are the yataverse-storage-research bot. Review only supplied facts. '
-        'Return ONLY a JSON object with exactly these keys and allowed values: '
-        'finding: synthetic_lossless_verified; limitation: durability_and_tco_unqualified; '
-        'next_experiment: repeated OR incompressible OR mixed. '
-        'Choose the next dataset to cover a different entropy pattern than the supplied experiment. '
-        'No other keys, prose, numerical claims, durations, sizes, arithmetic or converted units. '
-        'Numerical reporting is rendered separately from measured facts by deterministic code. '
-        'No provider-equivalent durability or cost/speed win is established. '
-        'Never execute commands, access Mithril, request credentials, or infer missing costs. '
-        'Label the frozen historical snapshot and the new synthetic test separately.')
+    # Keep measurement tables local: the model only needs the verified outcome
+    # and current pattern to choose a safe next experiment. Large tables made
+    # prefill/admission consume the provider's queue deadline on the live route.
+    compact = {'current_pattern': experiment['kind'], 'synthetic_restore_verified': True,
+        'historical_restore_complete': facts['initialRestore'].get('complete', False),
+        'independent_domains_qualified': False, 'actual_tco_measured': False}
+    system = ('Storage research planner. Return JSON only: '
+        '{"finding":"synthetic_lossless_verified","limitation":"durability_and_tco_unqualified",'
+        '"next_experiment":"repeated|incompressible|mixed"}. '
+        'Choose one next_experiment different from current_pattern. No other fields or claims.')
     body = {'model': 'mishima', 'messages': [{'role': 'system', 'content': system},
         {'role': 'user', 'content': json.dumps(compact, ensure_ascii=False, separators=(',', ':'))}],
         'max_tokens': 192, 'stream': False, 'reasoning_effort': 'none',
-        'response_format': {'type': 'json_object'},
         'chat_template_kwargs': {'enable_thinking': False}}
     encoded = json.dumps(body, ensure_ascii=False).encode()
     if len(encoded) > 10000: raise ValueError('compact research input exceeded 10KB')
@@ -126,9 +124,22 @@ def main():
         headers={'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json'})
     started = time.monotonic()
     opener = urllib.request.build_opener(NoRedirect())
-    with opener.open(req, timeout=420) as response:
-        raw = response.read(65537)
-        if len(raw) > 65536: raise ValueError('oversized inference response')
+    try:
+        with opener.open(req, timeout=420) as response:
+            raw = response.read(65537)
+            if len(raw) > 65536: raise ValueError('oversized inference response')
+    except urllib.error.HTTPError as error:
+        # No inline retry: capacity rejection is not a license to duplicate a
+        # possibly executed request. The six-hour dispatcher retries later.
+        payload = error.read(4096)
+        try: details = json.loads(payload)
+        except ValueError: details = {}
+        error_details = details.get('error', {}) if isinstance(details, dict) else {}
+        safe_details = {k: error_details[k] for k in ['code', 'type', 'executed'] if k in error_details} if isinstance(error_details, dict) else {}
+        if isinstance(details, dict) and 'executed' in details: safe_details['executed'] = details['executed']
+        atomic(workspace / 'last-inference-error.json', json.dumps({'httpStatus': error.code,
+            'responseSHA256': sha(payload), 'response': safe_details, 'inlineRetried': False}, indent=2) + '\n')
+        raise
     result = json.loads(raw); review = accept_response(result)
     now = datetime.datetime.now(datetime.timezone.utc).isoformat()
     record = {'schema': 'yataverse-research-checkpoint/v1', 'createdUTC': now,
