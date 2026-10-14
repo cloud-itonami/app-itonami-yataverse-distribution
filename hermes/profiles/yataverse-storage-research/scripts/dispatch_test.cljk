@@ -39,8 +39,10 @@ assert rejected(); checks += 1
 config["model"]["default"] = m["MODEL"]; (home / "config.yaml").write_text(yaml.safe_dump(config))
 assert not m["completed"](w, time.time_ns(), 0); checks += 1
 began = time.time_ns() - 10000000
-(w / "status.json").write_text(json.dumps({"manifest_verified": True, "evidence_files_checked": 4}))
+(w / "status.json").write_text(json.dumps({"manifest_verified": True, "evidence_files_checked": 4,
+    "inference_model": "mishima", "review_validated": True, "synthetic_restore_cases_verified": 9}))
 (w / "EXPERIMENT_PLAN.md").write_text("synthetic plan")
+(w / "RESEARCH_REPORT.md").write_text("synthetic report")
 assert m["completed"](w, began, 0); checks += 1
 assert not m["completed"](w, time.time_ns() + 1000000, 0); checks += 1
 result = {"checks": checks, "passed": True, "codeSHA": m["digest"](Path(__file__).with_name("dispatch.cljk")),
