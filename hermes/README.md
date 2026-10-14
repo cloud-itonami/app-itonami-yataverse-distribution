@@ -9,3 +9,8 @@ The native cron definition is a bounded six-hour research checkpoint, not a sche
 Materializing this directory does not itself prove Itonami Bot creation, grants, a successful turn,
 a running scheduler or cloud-equivalent durability. Host activation must verify those separately.
 Source uses the owning-repository profile layout; preserve host-local provider credentials and state.
+
+The shipped schedule starts disabled. Activation requires a scoped private-data/provider decision,
+a valid Itonami human session for Bot registration, and a verified first turn. The host-private
+handoff may contain internal evidence; source-profile merge does not authorize sending it to a model.
+A missing multiplex gateway is not permission to start unrelated bots.
