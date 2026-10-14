@@ -1,0 +1,24 @@
+{
+  "jobs": [
+    {
+      "id": "7a57a0e01414",
+      "name": "yataverse-storage-research-tick",
+      "enabled": true,
+      "schedule": {
+        "kind": "cron",
+        "expr": "17 */6 * * *",
+        "display": "every 6 hours at minute 17"
+      },
+      "prompt": "Yataverse storage research: SOUL.md と host workspace/HANDOFF.md、status.jsonを読み、承認済み範囲で安全な研究作業を一つ進める。元lake・稼働サービス・Mithrilは操作しない。未承認の内部研究結果を公開しない。全量再試験を周期的に繰り返さず、receipt付きでSTATUS.md/status.jsonを更新する。入力不足はneeds-input、変化なしは静かに終了。",
+      "deliver": "local",
+      "workdir": null,
+      "enabled_toolsets": [
+        "terminal",
+        "file"
+      ],
+      "no_agent": false,
+      "skills": [],
+      "script": null
+    }
+  ]
+}
