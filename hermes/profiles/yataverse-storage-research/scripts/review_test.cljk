@@ -1,0 +1,46 @@
+#!/usr/bin/env python3
+"""Exercise privacy projection, real synthetic loss recovery and response admission offline."""
+import argparse, json, runpy
+from pathlib import Path
+
+p = argparse.ArgumentParser(); p.add_argument('--scratch', required=True); args = p.parse_args()
+base = Path(args.scratch).resolve()
+if base.exists() or '/github/workspaces/' not in str(base): raise ValueError('fresh github scratch required')
+base.mkdir(parents=True)
+m = runpy.run_path(str(Path(__file__).with_name('review.cljk')))
+sentinel = 'SECRET-MUST-NEVER-ENTER-PROMPT'
+fixtures = {
+    'full-persistent-campaign-v2.json': {'reports': {'build': {'inventoryRows': 2,
+        'inventoryBytes': 42, 'totals': {'zstdPayloadBytes': 20, 'key': sentinel}},
+        'initialRestore': {'verifiedBytes': 42, 'key': sentinel}}, 'key': sentinel},
+    'full-persistent-tco-v2.json': {'userInputs': {'electricityJPYPerKWh': 27, 'key': sentinel},
+        'unknown': ['mains power'], 'actualTotalJPYMonth': None, 'key': sentinel},
+    'full-study-allocation.json': {'key': sentinel},
+    'full-study-control-events.json': {'command': sentinel},
+}
+files = []
+for name, data in fixtures.items():
+    path = base / name; path.write_text(json.dumps(data)); files.append({'path': str(path)})
+facts = m['projection'](files); experiment = m['synthetic'](); body = m['request_body'](facts, experiment)
+checks = 0
+assert sentinel.encode() not in body; checks += 1
+assert len(body) < 10000; checks += 1
+assert facts['initialRestore']['verifiedBytes'] == 42 and facts['actualTotalJPYMonth'] is None; checks += 1
+assert sum(x['singleShardLossesVerified'] for x in experiment['results']) == 9; checks += 1
+assert len({x['rawSHA256'] for x in experiment['results']}) == 1; checks += 1
+review = {'finding': 'synthetic_lossless_verified', 'limitation': 'durability_and_tco_unqualified', 'next_experiment': 'incompressible'}
+text = json.dumps(review)
+response = {'model': 'mishima', 'choices': [{'finish_reason': 'stop', 'message': {'content': text}}]}
+assert m['accept_response'](response) == review; checks += 1
+for patch in [{'model': 'other'}, {'choices': [{'finish_reason': 'length', 'message': {'content': text}}]},
+              {'choices': [{'finish_reason': 'stop', 'message': {'content': text + ' 625秒'}}]},
+              {'choices': [{'finish_reason': 'stop', 'message': {'content': json.dumps(dict(review, next_experiment='shell-command'))}}]}]:
+    altered = dict(response); altered.update(patch)
+    try: m['accept_response'](altered)
+    except ValueError: checks += 1
+    else: raise AssertionError('unqualified model output admitted')
+for kind in ['incompressible', 'mixed']:
+    measured = m['synthetic'](kind)
+    assert sum(x['singleShardLossesVerified'] for x in measured['results']) == 9; checks += 1
+result = {'passed': True, 'checks': checks, 'scope': 'offline synthetic; no inference or identity writes'}
+(base / 'result.json').write_text(json.dumps(result, indent=2) + '\n'); print(json.dumps(result))

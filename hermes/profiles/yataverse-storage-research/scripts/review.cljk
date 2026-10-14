@@ -1,0 +1,165 @@
+#!/usr/bin/env python3
+"""Bounded research checkpoint: verified receipts, synthetic experiment, compact model review.
+
+The model has no executable tools. Only an allowlisted projection of the four
+approved receipts crosses the inference boundary; credentials are HTTP auth only.
+"""
+import argparse, datetime, hashlib, json, os, random, runpy, time, urllib.request, zlib
+from pathlib import Path
+
+def sha(data):
+    return hashlib.sha256(data).hexdigest()
+
+def atomic(path, value):
+    temporary = path.with_name('.' + path.name + '.new')
+    fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, 'w') as output:
+        output.write(value); output.flush(); os.fsync(output.fileno())
+    os.replace(temporary, path)
+
+def projection(files):
+    data = {Path(item['path']).name: json.loads(Path(item['path']).read_text()) for item in files}
+    campaign = data['full-persistent-campaign-v2.json']
+    tco = data['full-persistent-tco-v2.json']
+    build = campaign['reports']['build']
+    restore = campaign['reports']['initialRestore']
+    # Deliberately exclude arbitrary nested content, keys (even public keys),
+    # key fingerprints, host addresses, paths and control-event command text.
+    def select(source, fields):
+        return {k: source[k] for k in fields if k in source}
+    return {
+        'scope': 'historical frozen lake snapshot, not current whole-lake measurement',
+        'build': select(build, ['inventoryRows', 'inventoryBytes', 'complete', 'wallMs']),
+        'buildBytes': select(build['totals'], ['zstdPayloadBytes', 'ecPhysicalBytes', 'missingBlocks']),
+        'initialRestore': select(restore, ['verifiedBlocks', 'verifiedBytes', 'wireBytes', 'wallMs',
+            'keyFromSurvivorBackup', 'metadataFromSurvivorBackup', 'indexSupplied', 'complete']),
+        'qualification': select(campaign, ['complete', 'externalProviderEquivalent',
+            'independentFaultDomainsQualified', 'physicalWANShutdown', 'activeServiceConfigurationChanged']),
+        'storageGB': select(tco, ['twoNodeAllocatedGB', 'retainedTestAllocatedGB']),
+        'userInputs': select(tco['userInputs'], ['xavierPurchaseJPY', 'jacobPurchaseJPY',
+            'electricityJPYPerKWh', 'depreciationMonths', 'maintenanceHoursPerMonth', 'maintenanceJPYPerHour']),
+        'actualTotalJPYMonth': tco['actualTotalJPYMonth'],
+        'missingCostMeasurements': tco['unknown'],
+        'evidenceFilesVerifiedLocally': len(data),
+    }
+
+EXPERIMENTS = {'repeated': '反復パターン', 'incompressible': '決定的な疑似乱数', 'mixed': '反復と疑似乱数の混合'}
+
+def synthetic(kind='repeated'):
+    # Small, deterministic, public-pattern bytes. No source lake or remote host.
+    raw = (b'yataverse-lossless-research\x00' + bytes(range(256))) * 1024
+    if kind not in EXPERIMENTS: raise ValueError('unapproved synthetic experiment')
+    if kind == 'incompressible': raw = random.Random(20261014).randbytes(len(raw))
+    if kind == 'mixed': raw = raw[:len(raw)//2] + random.Random(20261014).randbytes(len(raw)//2)
+    results = []
+    for level in [1, 6, 9]:
+        started = time.monotonic()
+        packed = zlib.compress(raw, level)
+        width = (len(packed) + 1) // 2
+        padded = packed.ljust(width * 2, b'\x00')
+        a, b = padded[:width], padded[width:]
+        parity = bytes(x ^ y for x, y in zip(a, b))
+        variants = [bytes(x ^ y for x, y in zip(b, parity)) + b,
+                    a + bytes(x ^ y for x, y in zip(a, parity)), a + b]
+        checks = [sha(zlib.decompress(v[:len(packed)])) == sha(raw) for v in variants]
+        if not all(checks): raise ValueError('synthetic restore mismatch')
+        results.append({'codec': 'zlib', 'level': level, 'rawBytes': len(raw),
+            'packedBytes': len(packed), 'twoPlusOneShardBytes': width * 3,
+            'singleShardLossesVerified': len(checks), 'rawSHA256': sha(raw),
+            'seconds': round(time.monotonic() - started, 6)})
+    return {'kind': kind, 'scope': 'synthetic in-memory 2+1 XOR; no WAN/durability/whole-lake claim', 'results': results}
+
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        raise ValueError('inference redirect refused')
+
+def request_body(facts, experiment):
+    compact = {'historicalEvidence': facts, 'newSyntheticExperiment': experiment}
+    system = ('You are the yataverse-storage-research bot. Review only supplied facts. '
+        'Return ONLY a JSON object with exactly these keys and allowed values: '
+        'finding: synthetic_lossless_verified; limitation: durability_and_tco_unqualified; '
+        'next_experiment: repeated OR incompressible OR mixed. '
+        'Choose the next dataset to cover a different entropy pattern than the supplied experiment. '
+        'No other keys, prose, numerical claims, durations, sizes, arithmetic or converted units. '
+        'Numerical reporting is rendered separately from measured facts by deterministic code. '
+        'No provider-equivalent durability or cost/speed win is established. '
+        'Never execute commands, access Mithril, request credentials, or infer missing costs. '
+        'Label the frozen historical snapshot and the new synthetic test separately.')
+    body = {'model': 'mishima', 'messages': [{'role': 'system', 'content': system},
+        {'role': 'user', 'content': json.dumps(compact, ensure_ascii=False, separators=(',', ':'))}],
+        'max_tokens': 192, 'stream': False, 'reasoning_effort': 'none',
+        'response_format': {'type': 'json_object'},
+        'chat_template_kwargs': {'enable_thinking': False}}
+    encoded = json.dumps(body, ensure_ascii=False).encode()
+    if len(encoded) > 10000: raise ValueError('compact research input exceeded 10KB')
+    return encoded
+
+def accept_response(response):
+    if response.get('model') != 'mishima': raise ValueError('unexpected response model')
+    choice = response['choices'][0]
+    text = choice['message'].get('content', '')
+    if choice.get('finish_reason') != 'stop' or not isinstance(text, str):
+        raise ValueError('incomplete model review')
+    review = json.loads(text)
+    if (set(review) != {'finding', 'limitation', 'next_experiment'}
+            or review['finding'] != 'synthetic_lossless_verified'
+            or review['limitation'] != 'durability_and_tco_unqualified'
+            or review['next_experiment'] not in EXPERIMENTS):
+        raise ValueError('unsupported model finding or experiment')
+    return review
+
+def main():
+    parser = argparse.ArgumentParser(); parser.add_argument('--policy', required=True)
+    args = parser.parse_args()
+    dispatch = runpy.run_path(str(Path(__file__).with_name('dispatch.cljk')))
+    policy, home, workspace, workdir, prompt = dispatch['validate'](args.policy)
+    next_path = workspace / 'next-experiment.json'
+    next_kind = json.loads(next_path.read_text())['kind'] if next_path.exists() else 'repeated'
+    facts, experiment = projection(policy['evidence']), synthetic(next_kind)
+    body = request_body(facts, experiment)
+    # Existing application credential stays in its existing location. Never put
+    # it in prompts, logs, receipts, the repository, or the import bundle.
+    key = os.environ.get('MURAKUMO_FLEET_API_KEY')
+    if not key:
+        key = (Path.home() / '.itonami-fleet/itonami-murakumo-api-key').read_text().strip()
+    req = urllib.request.Request(dispatch['DESTINATION'] + '/chat/completions', data=body,
+        headers={'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json'})
+    started = time.monotonic()
+    opener = urllib.request.build_opener(NoRedirect())
+    with opener.open(req, timeout=420) as response:
+        raw = response.read(65537)
+        if len(raw) > 65536: raise ValueError('oversized inference response')
+    result = json.loads(raw); review = accept_response(result)
+    now = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    record = {'schema': 'yataverse-research-checkpoint/v1', 'createdUTC': now,
+        'facts': facts, 'synthetic': experiment, 'modelReview': review,
+        'inference': {'destination': dispatch['DESTINATION'], 'model': result['model'],
+            'requestBytes': len(body), 'requestSHA256': sha(body), 'responseSHA256': sha(raw),
+            'usage': result.get('usage'), 'seconds': round(time.monotonic() - started, 3)},
+        'evidence': policy['evidence'], 'providerEquivalentDurabilityQualified': False,
+        'actualTotalJPYMonth': None}
+    report = '# Yataverse storage research checkpoint\n\n' + now + '\n\n'
+    report += '## Verified historical evidence and new synthetic measurements\n\n```json\n'
+    report += json.dumps({'facts': facts, 'synthetic': experiment}, ensure_ascii=False, indent=2) + '\n```\n\n'
+    rendered_review = ('実行した合成データで可逆復元を確認。独立障害ドメインと総費用の実額は未確認。'
+        'モデルが選んだ次の合成データ: ' + EXPERIMENTS[review['next_experiment']] + '。')
+    report += '## Model review (validated bounded choices, not new lake measurements)\n\n' + rendered_review + '\n\n'
+    report += '## Execution scope\n\nOnly approved receipt files were read. Synthetic bytes were generated in memory. '
+    report += 'No source lake, live service, WAN, key custody, Mithril, or public repository was modified. '
+    report += 'Cloud price comparisons remain historical estimates. Actual TCO and equivalent durability remain unqualified.\n'
+    stamp = datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
+    atomic(workspace / ('checkpoint-' + stamp + '.json'), json.dumps(record, ensure_ascii=False, indent=2) + '\n')
+    atomic(workspace / 'RESEARCH_REPORT.md', report)
+    atomic(workspace / 'EXPERIMENT_PLAN.md', 'Next checkpoint: rerun bounded synthetic codec/shard comparisons; '
+        'review new evidence only with explicit input-policy update. Independent domains, mains power, depreciation '
+        'and maintenance remain measurement gaps. No production fault injection.\n\nModel selection:\n' + rendered_review + '\n')
+    atomic(next_path, json.dumps({'kind': review['next_experiment']}) + '\n')
+    atomic(workspace / 'status.json', json.dumps({'manifest_verified': True, 'evidence_files_checked': 4,
+        'createdUTC': now, 'research_mode': 'compact-model-review-with-measured-synthetic-experiment',
+        'review_validated': True, 'synthetic_restore_cases_verified': 9,
+        'inference_model': 'mishima', 'report': 'RESEARCH_REPORT.md', 'checkpoint': 'checkpoint-' + stamp + '.json',
+        'provider_equivalent_durability_qualified': False}, indent=2) + '\n')
+    print(json.dumps({'state': 'research-checkpoint-completed', 'model': 'mishima',
+        'requestBytes': len(body), 'seconds': round(time.monotonic() - started, 3)}))
+
+if __name__ == '__main__': main()
