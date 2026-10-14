@@ -3,7 +3,7 @@
     {
       "id": "7a57a0e01414",
       "name": "yataverse-storage-research-tick",
-      "enabled": true,
+      "enabled": false,
       "schedule": {
         "kind": "cron",
         "expr": "17 */6 * * *",
@@ -18,7 +18,8 @@
       ],
       "no_agent": false,
       "skills": [],
-      "script": null
+      "script": null,
+      "paused_reason": "Enable only after scoped private-data/provider approval, runtime binding, and a successful first run"
     }
   ]
 }
