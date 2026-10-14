@@ -87,7 +87,6 @@ def request_body(facts, experiment):
     body = {'model': 'mishima', 'messages': [{'role': 'system', 'content': system},
         {'role': 'user', 'content': json.dumps(compact, ensure_ascii=False, separators=(',', ':'))}],
         'max_tokens': 192, 'stream': False, 'reasoning_effort': 'none',
-        'response_format': {'type': 'json_object'},
         'chat_template_kwargs': {'enable_thinking': False}}
     encoded = json.dumps(body, ensure_ascii=False).encode()
     if len(encoded) > 10000: raise ValueError('compact research input exceeded 10KB')
