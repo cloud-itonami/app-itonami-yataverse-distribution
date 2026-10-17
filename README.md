@@ -443,6 +443,57 @@ python3 deploy/ship_lake_car.py \
   --remote-ipfs-path /path/to/jacob/dedicated/repo
 ```
 
+### Compressed CARv2 transfer and S3-compatible staging
+
+`ship_lake_car.py --carv2-zstd` adds a bulk-transfer representation without
+rewriting the inventory blocks. The source exporter still checks each
+sha2-256 CID and writes CARv1; `carv2_zstd.py` wraps those exact bytes in
+indexed CARv2 and compresses the complete archive with Zstandard level 9. The
+receiver verifies the compressed SHA-256, decompresses to CARv2, validates
+every block digest and the CARv2 index, then passes the restored archive to
+the existing Kubo importer. UnixFS block bytes and their CIDs are unchanged.
+
+Install `carv2_zstd.py` beside `ship_lake_car.py` on the coordinator and
+beside `import_lake_car.py` on the receiver. Both hosts need the `zstd` CLI.
+The compressed transfer mode is opt-in; existing CARv1 transfer commands keep
+their current format.
+
+```bash
+python3 deploy/ship_lake_car.py \
+  --source /path/to/yataverse-distribution --kbb /path/to/kbb \
+  --inventory /path/to/inventory-20260926.jsonl \
+  --sha256 f616962875a0850efa824b53be45fc22edce39f4c280a32cb80b72a55b020188 \
+  --count 821533 --start-row 4200 \
+  --base-url https://yataverse-data.example/ipfs/ \
+  --state-dir /path/to/ship-state --ssh-host user@receiver \
+  --remote-dir /path/to/receiver/lake-state \
+  --remote-importer /path/to/receiver/bin/import_lake_car.py \
+  --remote-inventory /path/to/receiver/inventory-20260926.jsonl \
+  --remote-ipfs-bin /path/to/receiver/ipfs \
+  --remote-ipfs-path /path/to/receiver/kubo-repo \
+  --carv2-zstd \
+  --s3-destination s3://bucket/yataverse-lake \
+  --s3-endpoint-url https://s3-compatible.example \
+  --s3-region us-east-1
+```
+
+The S3 destination is an object prefix. Each archive key includes the
+inventory identity, row range and compressed SHA-256; a JSON manifest is stored
+beside it. The compressed SHA-256 in the key identifies the transfer bytes.
+`aws s3 cp` uses the normal AWS credential chain, with an optional endpoint URL
+and signing region, so AWS S3 and S3-compatible services use the same object
+interface. The coordinator needs PUT and HEAD access; the receiver needs GET
+access through the same AWS CLI configuration. The S3 object
+is explicitly a compressed archive artifact. Download the `.carv2.zst` object
+and its JSON manifest with `aws s3 cp`, then use
+`python3 deploy/carv2_zstd.py unpack --compressed FILE --output FILE.carv2`
+before running `import_lake_car.py` with the manifest's `carv2_sha256`.
+
+CARv2 range offsets apply after decompression. A ranged GET into the compressed
+object cannot be used with CARv2's block index. For online Kura/S3 block reads,
+keep using the existing indexed, uncompressed CARv2 pack store; this option is
+for bulk transfer and cold distribution archives.
+
 `deploy/main2-lake-car-jacob.plist` records the installed main-2 LaunchAgent
 for the dated inventory and Jacob's dedicated HDD repository. Its 10-second
 interval replaces the earlier 30-second interval; launchd keeps one instance

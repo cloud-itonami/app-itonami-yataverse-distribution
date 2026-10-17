@@ -12,6 +12,7 @@ import subprocess
 import sys
 import uuid
 from pathlib import Path
+from urllib.parse import urlsplit
 
 
 SHA256 = re.compile(r"[0-9a-f]{64}\Z")
@@ -66,6 +67,87 @@ def last_receipt(output, source):
         return json.loads(lines[-1])
     except ValueError as exc:
         raise ShipError(source + " returned invalid receipt") from exc
+
+
+def s3_object_uri(prefix, suffix):
+    parsed = urlsplit(prefix)
+    if (parsed.scheme != "s3" or not parsed.netloc or parsed.username or
+            parsed.password or parsed.query or parsed.fragment):
+        raise ShipError("S3 destination must be an s3://bucket/prefix URI")
+    base = "s3://" + parsed.netloc + parsed.path.rstrip("/")
+    return base + "/" + suffix.lstrip("/")
+
+
+def s3_head(uri, endpoint_url, region):
+    parsed = urlsplit(uri)
+    key = parsed.path.lstrip("/")
+    command = ["aws", "s3api", "head-object", "--bucket", parsed.netloc,
+               "--key", key, "--output", "json"]
+    if endpoint_url:
+        command += ["--endpoint-url", endpoint_url]
+    if region:
+        command += ["--region", region]
+    return json.loads(run(command, timeout=120))
+
+
+def upload_s3_file(path, uri, *, endpoint_url, region, content_type, metadata):
+    command = ["aws", "s3", "cp", str(path), uri, "--only-show-errors",
+               "--content-type", content_type, "--metadata",
+               ",".join(key + "=" + value for key, value in metadata.items())]
+    if endpoint_url:
+        command += ["--endpoint-url", endpoint_url]
+    if region:
+        command += ["--region", region]
+    run(command, timeout=3600)
+    head = s3_head(uri, endpoint_url, region)
+    if (head.get("ContentLength") != path.stat().st_size or
+            head.get("Metadata") != metadata):
+        raise ShipError("S3-compatible HEAD differs from uploaded object")
+    return {"uri": uri, "bytes": path.stat().st_size,
+            "metadata": head.get("Metadata", {})}
+
+
+def pack_transport_archive(carv1, output, receipt_path, exported, row_count,
+                           max_bytes, timeout=1800):
+    helper = Path(__file__).resolve().with_name("carv2_zstd.py")
+    result = last_receipt(run([sys.executable, str(helper), "pack",
+                               "--carv1", str(carv1), "--output", str(output),
+                               "--receipt", str(receipt_path),
+                               "--max-blocks", str(row_count),
+                               "--max-bytes", str(max_bytes),
+                               "--timeout", str(timeout)], timeout=timeout + 60),
+                         "CARv2/Zstandard packer")
+    if (result.get("format") != "carv2+zstd" or
+            result.get("carv1_sha256") != exported.get("sha256") or
+            result.get("blocks") != row_count or
+            result.get("compressed_sha256") != sha_file(output) or
+            result.get("compressed_bytes") != output.stat().st_size or
+            not SHA256.fullmatch(result.get("carv2_sha256", ""))):
+        raise ShipError("CARv2/Zstandard receipt differs from the exported CAR")
+    return result
+
+
+def unpack_remote_archive(args, remote_compressed, remote_carv2,
+                          remote_unpack_receipt, archive_receipt, row_count):
+    remote_tool = str(Path(args.remote_importer).parent / "carv2_zstd.py")
+    command = ["python3", remote_tool, "unpack",
+               "--compressed", remote_compressed,
+               "--output", remote_carv2,
+               "--receipt", remote_unpack_receipt,
+               "--expected-compressed-sha256", archive_receipt["compressed_sha256"],
+               "--expected-carv2-sha256", archive_receipt["carv2_sha256"],
+               "--max-blocks", str(row_count),
+               "--max-bytes", str(archive_receipt["carv2_bytes"]),
+               "--timeout", "1800"]
+    output = run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
+                  args.ssh_host, shlex.join(command)], timeout=1900)
+    result = last_receipt(output, "remote CARv2/Zstandard unpacker")
+    if (result.get("status") != "complete" or
+            result.get("compressed_sha256") != archive_receipt["compressed_sha256"] or
+            result.get("carv2_sha256") != archive_receipt["carv2_sha256"] or
+            result.get("blocks") != row_count):
+        raise ShipError("remote CARv2/Zstandard receipt differs")
+    return result
 
 
 def large_archive_receipt_matches(receipt, skipped, inventory_sha):
@@ -256,15 +338,58 @@ def ship_once(args):
                     exported.get("sha256") != sha_file(car)):
                 raise ShipError("CAR export receipt differs")
             atomic_json(export_receipt, exported)
-        remote_car = (args.remote_car_dir or args.remote_dir).rstrip("/") + "/" + name + ".car"
+        archive_path = args.state_dir / (name + ".carv2.zst")
+        archive_receipt_path = args.state_dir / (name + "-carv2-zstd.json")
+        archive_receipt = None
+        if args.carv2_zstd:
+            archive_receipt = pack_transport_archive(
+                car, archive_path, archive_receipt_path, exported, len(rows),
+                args.max_bytes)
+            transfer_car = archive_path
+            transfer_sha256 = archive_receipt["compressed_sha256"]
+            import_sha256 = archive_receipt["carv2_sha256"]
+        else:
+            transfer_car = car
+            transfer_sha256 = exported["sha256"]
+            import_sha256 = exported["sha256"]
+        remote_ext = ".carv2.zst" if args.carv2_zstd else ".car"
+        remote_car = (args.remote_car_dir or args.remote_dir).rstrip("/") + "/" + name + remote_ext
+        remote_plain_car = remote_car + ".carv2" if args.carv2_zstd else remote_car
+        remote_unpack_receipt = remote_car + ".unpack.json"
         remote_receipt = args.remote_dir.rstrip("/") + "/" + name + "-import.json"
         ssh_opts = ["-o", "BatchMode=yes", "-o", "ConnectTimeout=10"]
-        run(["scp", *ssh_opts, str(car), args.ssh_host + ":" + remote_car], timeout=900)
+        s3_object = None
+        object_uri = None
+        if args.s3_destination:
+            suffix = (args.sha256 + "/" + name + "-" +
+                      archive_receipt["compressed_sha256"] + ".carv2.zst")
+            object_uri = s3_object_uri(args.s3_destination, suffix)
+            metadata = {"format": "carv2+zstd",
+                        "sha256": archive_receipt["compressed_sha256"],
+                        "carv2-sha256": archive_receipt["carv2_sha256"],
+                        "inventory-sha256": args.sha256}
+            s3_object = upload_s3_file(
+                transfer_car, object_uri, endpoint_url=args.s3_endpoint_url,
+                region=args.s3_region,
+                content_type="application/zstd", metadata=metadata)
+            s3_download = ["aws", "s3", "cp", object_uri, remote_car,
+                           "--only-show-errors"]
+            if args.s3_endpoint_url:
+                s3_download += ["--endpoint-url", args.s3_endpoint_url]
+            if args.s3_region:
+                s3_download += ["--region", args.s3_region]
+            run(["ssh", *ssh_opts, args.ssh_host,
+                 shlex.join(s3_download)], timeout=3600)
+        else:
+            run(["scp", *ssh_opts, str(transfer_car), args.ssh_host + ":" + remote_car], timeout=1800)
+        if args.carv2_zstd:
+            unpack_remote_archive(args, remote_car, remote_plain_car,
+                                  remote_unpack_receipt, archive_receipt, len(rows))
         import_command = ["python3", args.remote_importer,
                           "--inventory", args.remote_inventory,
                           "--sha256", args.sha256, "--count", str(args.count),
                           "--start-row", str(start), "--max-blocks", str(len(rows)),
-                          "--car", remote_car, "--car-sha256", exported["sha256"],
+                          "--car", remote_plain_car, "--car-sha256", import_sha256,
                           "--ipfs-bin", args.remote_ipfs_bin,
                           "--ipfs-path", args.remote_ipfs_path,
                           "--receipt", remote_receipt]
@@ -274,23 +399,79 @@ def ship_once(args):
                                 "Jacob importer")
         if (imported.get("status") != "complete" or
                 imported.get("start_row") != start or imported.get("end_row") != end or
-                imported.get("car_sha256") != exported["sha256"] or
+                imported.get("car_sha256") != import_sha256 or
                 imported.get("blocks") != len(rows)):
             raise ShipError("Jacob import receipt differs")
+
+        if args.s3_destination:
+            if not archive_receipt:
+                raise ShipError("S3 archival requires the CARv2/Zstandard transport mode")
+            manifest_path = args.state_dir / (name + "-carv2-zstd-manifest.json")
+            manifest = {
+                "schema": 1,
+                "format": "carv2+zstd",
+                "inventory_sha256": args.sha256,
+                "start_row": start,
+                "end_row": end,
+                "blocks": len(rows),
+                "carv1_sha256": archive_receipt["carv1_sha256"],
+                "carv2_sha256": archive_receipt["carv2_sha256"],
+                "compressed_sha256": archive_receipt["compressed_sha256"],
+                "carv2_bytes": archive_receipt["carv2_bytes"],
+                "compressed_bytes": archive_receipt["compressed_bytes"],
+                "ratio_uncompressed_over_compressed": archive_receipt["ratio_uncompressed_over_compressed"],
+                "kubo_import_root": imported["root"],
+                "s3_object": object_uri,
+            }
+            if manifest_path.exists():
+                if json.loads(manifest_path.read_text()) != manifest:
+                    raise ShipError("saved compressed archive manifest differs")
+            else:
+                atomic_json(manifest_path, manifest)
+            manifest_sha = sha_file(manifest_path)
+            s3_manifest = upload_s3_file(
+                manifest_path, object_uri + ".json",
+                endpoint_url=args.s3_endpoint_url, region=args.s3_region,
+                content_type="application/json",
+                metadata={"sha256": manifest_sha,
+                          "inventory-sha256": args.sha256})
+            s3_object["manifest_uri"] = object_uri + ".json"
+            s3_object["manifest_bytes"] = s3_manifest["bytes"]
+
         # Keep the durable import receipt, but remove the transient CAR before
         # advancing. A failed cleanup leaves the checkpoint at this range so
         # the next run can retry from its local verified CAR.
+        remote_cleanup = ["rm", "-f", "--", remote_car]
+        if args.carv2_zstd:
+            remote_cleanup += [remote_plain_car, remote_unpack_receipt]
         run(["ssh", *ssh_opts, args.ssh_host,
-             shlex.join(["rm", "-f", "--", remote_car])], timeout=120)
+             shlex.join(remote_cleanup)], timeout=120)
         if args.source_ssh_host:
             run(["ssh", *ssh_opts, args.source_ssh_host,
                  shlex.join(["rm", "-f", "--", source_car, source_receipt])], timeout=120)
-        atomic_json(checkpoint, {"cursor": end, "inventory_sha256": args.sha256,
-                                 "last_root": imported["root"],
-                                 "last_car_sha256": exported["sha256"]})
+        checkpoint_record = {"cursor": end, "inventory_sha256": args.sha256,
+                             "last_root": imported["root"],
+                             "last_car_sha256": import_sha256}
+        if archive_receipt:
+            checkpoint_record["last_transport_sha256"] = transfer_sha256
+        if s3_object:
+            checkpoint_record["last_s3_object"] = s3_object["uri"]
+        atomic_json(checkpoint, checkpoint_record)
         car.unlink()
-        return {"status": "shipped", "start_row": start, "end_row": end,
-                "blocks": len(rows), "root": imported["root"]}
+        if archive_path.exists():
+            archive_path.unlink()
+        result = {"status": "shipped", "start_row": start, "end_row": end,
+                  "blocks": len(rows), "root": imported["root"]}
+        if archive_receipt:
+            result["compression"] = {
+                "format": "carv2+zstd",
+                "carv2_bytes": archive_receipt["carv2_bytes"],
+                "compressed_bytes": archive_receipt["compressed_bytes"],
+                "ratio_uncompressed_over_compressed": archive_receipt["ratio_uncompressed_over_compressed"],
+            }
+        if s3_object:
+            result["s3_object"] = s3_object["uri"]
+        return result
 
 
 def main():
@@ -324,8 +505,22 @@ def main():
     parser.add_argument("--remote-ipfs-bin", required=True)
     parser.add_argument("--remote-ipfs-path", required=True)
     parser.add_argument("--remote-raw-block-store")
+    parser.add_argument("--carv2-zstd", action="store_true",
+                        help="transfer bounded archives as indexed CARv2 inside Zstandard")
+    parser.add_argument("--s3-destination",
+                        help="optional S3-compatible bucket/prefix for .carv2.zst objects")
+    parser.add_argument("--s3-endpoint-url",
+                        help="optional S3-compatible endpoint URL for aws s3 cp")
+    parser.add_argument("--s3-region",
+                        help="optional AWS signing region (for example, auto for R2)")
     args = parser.parse_args()
     try:
+        if args.s3_destination and not args.carv2_zstd:
+            raise ShipError("S3 archive upload requires --carv2-zstd")
+        if args.s3_endpoint_url and not args.s3_destination:
+            raise ShipError("--s3-endpoint-url requires --s3-destination")
+        if args.s3_region and not args.s3_destination:
+            raise ShipError("--s3-region requires --s3-destination")
         source_args = (args.source_exporter, args.source_inventory, args.source_ipfs_bin,
                        args.source_ipfs_path, args.source_output_dir)
         if args.source_ssh_host:
