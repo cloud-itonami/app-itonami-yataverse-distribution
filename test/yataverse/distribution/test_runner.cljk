@@ -5,7 +5,8 @@
             yataverse.distribution.planner-test
             yataverse.distribution.gossip-bridge-test
             yataverse.distribution.filecoin-archive-test
-            yataverse.distribution.filecoin-archive-e2e-test))
+            yataverse.distribution.filecoin-archive-e2e-test
+            yataverse.economy.evidence-test))
 
 (def totals (atom {:tests 0 :asserts 0 :fail 0 :error 0}))
 (defonce ^:private counts (atom {:n 0}))
@@ -35,7 +36,8 @@
   (t/run-tests 'yataverse.distribution.planner-test
                'yataverse.distribution.gossip-bridge-test
                'yataverse.distribution.filecoin-archive-test
-               'yataverse.distribution.filecoin-archive-e2e-test)
+               'yataverse.distribution.filecoin-archive-e2e-test
+               'yataverse.economy.evidence-test)
   (let [{:keys [fail error]} @totals]
     (if (pos? (+ fail error))
       #?(:clj (System/exit 1) :cljs (js/process.exit 1))
