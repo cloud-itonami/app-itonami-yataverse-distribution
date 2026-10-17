@@ -1,0 +1,3 @@
+repository=https://github.com/kotoba-lang/org-babashka-nbb.git
+revision=95ff779a659dbb344ab87017908c0acba4300b87
+path=cli.js

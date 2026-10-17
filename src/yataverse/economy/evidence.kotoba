@@ -1,0 +1,155 @@
+;; Pure receipt rules compiled by Amu. JSON parsing, canonical serialization,
+;; cryptographic providers, and durable storage belong to the host adapter.
+
+(ns yataverse.economy.evidence
+  (:export [schema-valid? event-id-valid? did-valid? bounded-nonblank?
+            positive-decimal? work-contract-valid? receipt-shape-valid?
+            signing-message verification-complete? admission-code]))
+
+(defn- code-point-width [point :i64] :i64
+  (if (< point 128)
+    1
+    (if (< point 2048)
+      2
+      (if (< point 65536) 3 4))))
+
+(defn schema-valid? [value :string] :bool
+  (= value "kotoba.service-evidence/v1"))
+
+(defn- hex-digit? [point :i64] :bool
+  (or (<= 48 point 57)
+      (<= 97 point 102)))
+
+(defn event-id-valid?
+  "Accept only a lowercase SHA-256 multihash in the schema's event-id form."
+  [value :string] :bool
+  (let [bytes (string-byte-length value)]
+    (if (not= bytes 71)
+      false
+      (and (= (string-code-point-at value 0) 115)
+           (= (string-code-point-at value 1) 104)
+           (= (string-code-point-at value 2) 97)
+           (= (string-code-point-at value 3) 50)
+           (= (string-code-point-at value 4) 53)
+           (= (string-code-point-at value 5) 54)
+           (= (string-code-point-at value 6) 58)
+           (loop [i 7, valid? true]
+             (if (or (= i bytes) (not valid?))
+               valid?
+               (recur (inc i)
+                      (hex-digit? (string-code-point-at value i)))))))))
+
+(defn- whitespace-character? [point :i64] :bool
+  (or (<= 9 point 13) (= point 32) (= point 133) (= point 160)
+      (= point 5760) (<= 8192 point 8202) (= point 8232)
+      (= point 8233) (= point 8239) (= point 8287)
+      (= point 12288) (= point 65279)))
+
+(defn- has-non-whitespace? [value :string] :bool
+  (let [bytes (string-byte-length value)]
+    (loop [i 0, found? false]
+      (if (or (= i bytes) found?)
+        found?
+        (let [point (string-code-point-at value i)]
+          (recur (+ i (code-point-width point))
+                 (not (whitespace-character? point))))))))
+
+(defn bounded-nonblank?
+  "Bound an externally supplied string before hashing, storage, or rendering."
+  [value :string max-code-units :i64] :bool
+  (and (> max-code-units 0)
+       (<= (string-code-unit-count value) max-code-units)
+       (has-non-whitespace? value)))
+
+(defn did-valid? [value :string] :bool
+  (let [bytes (string-byte-length value)]
+    (and (<= 9 bytes 256)
+         (= (string-code-point-at value 0) 100)
+         (= (string-code-point-at value 1) 105)
+         (= (string-code-point-at value 2) 100)
+         (= (string-code-point-at value 3) 58)
+         (= (string-code-point-at value 4) 107)
+         (= (string-code-point-at value 5) 101)
+         (= (string-code-point-at value 6) 121)
+         (= (string-code-point-at value 7) 58)
+         (has-non-whitespace? (string-substring value 8 bytes)))))
+
+(defn positive-decimal?
+  "A bounded canonical unsigned decimal integer greater than zero."
+  [value :string] :bool
+  (let [bytes (string-byte-length value)
+        first-point (if (= bytes 0) 0 (string-code-point-at value 0))]
+    (and (<= 1 bytes 40)
+         (<= 49 first-point 57)
+         (loop [i 1, valid? true]
+           (if (or (= i bytes) (not valid?))
+             valid?
+             (let [point (string-code-point-at value i)]
+               (recur (inc i) (<= 48 point 57))))))))
+
+(defn work-contract-valid?
+  "Bind each work kind to exactly one service category and measure unit."
+  [work-kind :string service-category :string measure-kind :string] :bool
+  (or (and (= work-kind "itonami-compute")
+           (= service-category "compute-execution")
+           (= measure-kind "verified-output-tokens"))
+      (and (= work-kind "yataverse-useful-egress")
+           (= service-category "delivery-serving")
+           (= measure-kind "client-useful-bytes"))
+      (and (= work-kind "kura-retention")
+           (= service-category "storage-retention")
+           (= measure-kind "verified-byte-seconds"))
+      (and (= work-kind "kura-repair")
+           (= service-category "placement-repair")
+           (= measure-kind "verified-repair-bytes"))))
+
+(defn signing-message [event-id :string] :string
+  (string-concat "kotoba.service-evidence/v1\n" event-id))
+
+(defn receipt-shape-valid?
+  "Validate normalized receipt values and host-parsed structural facts.
+
+  The adapter only parses/marshals JSON. All field bounds, contracts, signer
+  relationships, and fail-closed decisions remain here in Kotoba."
+  [receipt-schema :string event-id :string order-id :string provider-did :string
+   work-kind :string service-category :string policy-version :string
+   measure-kind :string measure-value :string nonce :string
+   provider-signature-did :string provider-signature :string
+   witness-count :i64 evidence-count :i64
+   receipt-fields-valid? :bool measure-fields-valid? :bool
+   signatures-fields-valid? :bool witnesses-valid? :bool evidence-cids-valid? :bool
+   economic-fields-absent? :bool private-fields-absent? :bool] :bool
+  (and (schema-valid? receipt-schema)
+       (event-id-valid? event-id)
+       (bounded-nonblank? order-id 256)
+       (did-valid? provider-did)
+       (work-contract-valid? work-kind service-category measure-kind)
+       (bounded-nonblank? policy-version 128)
+       measure-fields-valid?
+       (positive-decimal? measure-value)
+       (bounded-nonblank? nonce 256)
+       signatures-fields-valid?
+       (= provider-signature-did provider-did)
+       (bounded-nonblank? provider-signature 4096)
+       (<= 1 witness-count 32)
+       witnesses-valid?
+       (<= 1 evidence-count 64)
+       evidence-cids-valid?
+       receipt-fields-valid?
+       economic-fields-absent?
+       private-fields-absent?))
+
+(defn verification-complete?
+  "Require every injected host verifier to pass; absent checks fail closed."
+  [digest-valid? :bool provider-signature-valid? :bool
+   witnesses-signatures-valid? :bool policy-valid? :bool evidence-valid? :bool] :bool
+  (and digest-valid? provider-signature-valid? witnesses-signatures-valid?
+       policy-valid? evidence-valid?))
+
+(defn admission-code
+  "Pure replay transition: 0=accepted, 1=duplicate, -1=event collision,
+  -2=order-scoped nonce reuse. The host persists only code 0 transitions."
+  [event-present? :bool same-event-body? :bool nonce-present? :bool] :i64
+  (if event-present?
+    (if same-event-body? 1 -1)
+    (if nonce-present? -2 0)))

@@ -1,0 +1,45 @@
+name: Amu service evidence
+on:
+  pull_request:
+  push:
+    branches: [main]
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  amu-service-evidence-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: pins
+        name: Read pinned Amu and engine revisions
+        run: |
+          echo "amu=$(cat amu.lock)" >> "$GITHUB_OUTPUT"
+          echo "engine=$(sed -n 's/^revision=//p' engine.lock)" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: kotoba-lang/amu
+          ref: ${{ steps.pins.outputs.amu }}
+          path: .build-deps/amu
+          persist-credentials: false
+          fetch-depth: 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: kotoba-lang/org-babashka-nbb
+          ref: ${{ steps.pins.outputs.engine }}
+          path: .build-deps/nbb
+          persist-credentials: false
+          fetch-depth: 1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.12.0
+      - name: Build the JVM-free Amu/Kotoba artifact
+        run: node scripts/build-service-evidence.mjs
+        env:
+          AMU_ROOT: ${{ github.workspace }}/.build-deps/amu
+          KBB_ENGINE_ROOT: ${{ github.workspace }}/.build-deps/nbb
