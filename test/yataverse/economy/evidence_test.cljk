@@ -17,7 +17,7 @@
    :nonce "request-17-attempt-1"})
 
 (def passing-verifiers
-  {:digest-valid? (fn [_] true)
+  {:digest-valid? (fn [_ _] true)
    :signature-valid? (fn [_ _] true)
    :policy-valid? (fn [_] true)
    :evidence-valid? (fn [_] true)})
@@ -27,6 +27,11 @@
     (is (= {:category :delivery-serving :measure-kind :client-useful-bytes}
            (get evidence/work-contracts :yataverse-useful-egress)))
     (is (empty? (evidence/shape-errors receipt))))
+  (testing "digest and signatures use stable, non-circular payloads"
+    (is (= (dissoc receipt :event-id :signatures)
+           (evidence/canonical-body receipt)))
+    (is (= (str "kotoba.service-evidence/v1\n" (:event-id receipt))
+           (evidence/signing-message receipt))))
   (testing "the admitted receipt cannot encode a token action or private payload"
     (is (some #{:economic-action-field-forbidden}
               (evidence/shape-errors (assoc receipt :token :YATA))))
@@ -50,7 +55,7 @@
                           #"digest did not verify"
                           (evidence/verify-receipt
                            receipt (assoc passing-verifiers
-                                          :digest-valid? (fn [_] false)))))
+                                          :digest-valid? (fn [_ _] false)))))
     (is (thrown-with-msg? #?(:clj Exception :cljs js/Error)
                           #"signature did not verify"
                           (evidence/verify-receipt

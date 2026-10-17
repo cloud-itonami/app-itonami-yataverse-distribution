@@ -18,6 +18,17 @@
    :kura-repair {:category :placement-repair
                  :measure-kind :verified-repair-bytes}})
 
+(defn canonical-body
+  "Fields covered by the event digest, before JCS serialization. Signatures and
+  the event ID itself are excluded to avoid a digest cycle."
+  [receipt]
+  (dissoc receipt :event-id :signatures))
+
+(defn signing-message
+  "Exact UTF-8 message provider and witness keys sign after event digesting."
+  [{:keys [event-id]}]
+  (str schema "\n" event-id))
+
 (def ^:private receipt-keys
   #{:schema :event-id :order-id :provider-did :work-kind :service-category
     :policy-version :measure :evidence-cids :signatures :nonce})
@@ -147,13 +158,13 @@
                    (fn? evidence-valid?)
                    (fn? policy-valid?))
       (throw (ex-info "digest, signature, evidence, and policy verifiers are required" {})))
-    (when-not (true? (digest-valid? receipt))
+    (when-not (true? (digest-valid? (canonical-body receipt) (:event-id receipt)))
       (throw (ex-info "service evidence digest did not verify"
                       {:event-id (:event-id receipt)})))
     (let [signers (into [(:provider (:signatures receipt))]
                         (:witnesses (:signatures receipt)))]
       (doseq [signer signers]
-        (when-not (true? (signature-valid? receipt signer))
+        (when-not (true? (signature-valid? (signing-message receipt) signer))
           (throw (ex-info "service evidence signature did not verify"
                           {:event-id (:event-id receipt)
                            :signer (:did signer)})))))
@@ -180,7 +191,7 @@
   (verify-receipt receipt verifiers)
   (let [event-id (:event-id receipt)
         nonce-key [(:order-id receipt) (:nonce receipt)]
-        body (dissoc receipt :event-id :signatures)]
+        body (canonical-body receipt)]
     (if-let [prior (get-in ledger [:events event-id])]
       (if (= prior body)
         {:ledger ledger :status :duplicate :event-id event-id
