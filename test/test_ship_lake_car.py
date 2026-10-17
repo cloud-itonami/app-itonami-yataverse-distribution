@@ -68,6 +68,52 @@ class ShipLakeCarTests(unittest.TestCase):
         with self.assertRaisesRegex(ship.ShipError, "returned no receipt"):
             ship.last_receipt("", "Jacob importer")
 
+    def test_s3_object_uri_joins_prefix_without_duplicate_slashes(self):
+        self.assertEqual("s3://bucket/lake/inventory/range.carv2.zst",
+                         ship.s3_object_uri("s3://bucket/lake/",
+                                            "/inventory/range.carv2.zst"))
+        for invalid in ("https://bucket/lake", "s3://user@bucket/lake",
+                        "s3://bucket/lake?version=1", "s3:///lake"):
+            with self.subTest(invalid=invalid):
+                with self.assertRaisesRegex(ship.ShipError, "s3://bucket/prefix"):
+                    ship.s3_object_uri(invalid, "object")
+
+    def test_s3_upload_checks_head_size_and_metadata(self):
+        metadata = {"format": "carv2+zstd", "sha256": "a" * 64}
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "range.carv2.zst"
+            path.write_bytes(b"compressed archive")
+            expected_size = path.stat().st_size
+            with patch.object(ship, "run", side_effect=["", json.dumps({
+                    "ContentLength": expected_size,
+                    "Metadata": metadata})]) as command:
+                uploaded = ship.upload_s3_file(
+                    path, "s3://bucket/lake/archive.carv2.zst",
+                    endpoint_url="https://r2.example", region="auto",
+                    content_type="application/zstd", metadata=metadata)
+
+        self.assertEqual(expected_size, uploaded["bytes"])
+        self.assertEqual(metadata, uploaded["metadata"])
+        upload_command, head_command = [call.args[0] for call in command.call_args_list]
+        self.assertEqual("aws", upload_command[0])
+        self.assertIn("https://r2.example", upload_command)
+        self.assertIn("auto", head_command)
+        self.assertIn("head-object", head_command)
+
+    def test_s3_upload_refuses_head_mismatch(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "range.carv2.zst"
+            path.write_bytes(b"compressed archive")
+            with patch.object(ship, "run", side_effect=["", json.dumps({
+                    "ContentLength": 0, "Metadata": {}})]):
+                with self.assertRaisesRegex(ship.ShipError,
+                                            "HEAD differs from uploaded object"):
+                    ship.upload_s3_file(
+                        path, "s3://bucket/lake/archive.carv2.zst",
+                        endpoint_url=None, region=None,
+                        content_type="application/zstd",
+                        metadata={"format": "carv2+zstd"})
+
     def test_oversized_skip_requires_matching_jacob_archive(self):
         skipped = {"row": 1, "cid": CID_B, "bytes": ship.MAX_CAR_BLOCK + 1,
                    "reason": "oversized-for-car"}
