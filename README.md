@@ -42,16 +42,29 @@ The name is a family name: the serving family of `yataverse.com`
   core's content-hash dedup, want-lists from assignments via
   `respond-to-want`). Socket-free by design; the transport adapter
   (murakumo overlay QUIC) is the remaining host shell (ADR-2607023100).
+- `yataverse.economy.evidence` — typed, host-free Amu rules for the
+  domain-neutral service-evidence receipt, work-kind/measurement contracts,
+  bounded fields, verification gates, and replay decisions. Build its pure
+  `js-kotoba-v1` output with `node scripts/build-service-evidence.mjs` using the
+  revisions in `amu.lock` and `engine.lock`, then import
+  `src/yataverse/economy/evidence.mjs`. That module binds the compiled guest to
+  the thin `evidence-host.mjs` adapter, which projects JSON values, calls
+  injected crypto/policy/evidence providers, and stores the in-memory replay
+  state. It does not mint, price, reserve, convert, transfer, or pay any token
+  or credit, and it is not connected to production job, storage, or payout
+  flows.
 
-## Test
+## Service evidence build
 
 ```sh
-kbb --backend sci --classpath "src:test:../io-libp2p/src" \
-    -e '(require (quote [yataverse.distribution.test-runner :as runner])) (runner/-main)'
+AMU_ROOT=/path/to/pinned/amu \
+KBB_ENGINE_ROOT=/path/to/pinned/nbb-engine \
+node scripts/build-service-evidence.mjs
 ```
 
-Explicit-namespace runner; exits non-zero on any failure. Current: 14
-tests / 51 assertions, 0 failures.
+The build verifies the pinned, clean compiler and engine checkouts and emits the
+JVM-free Amu/Kotoba module under `dist/`. Pull requests run the same build in
+GitHub Actions.
 
 ## Xavier replica (2026-09-26)
 
