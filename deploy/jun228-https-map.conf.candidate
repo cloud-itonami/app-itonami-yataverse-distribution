@@ -4,4 +4,4 @@
 [Service]
 ExecStart=
 ExecStart=/usr/local/sbin/yataverse-renew-public-https --apply 220.146.177.126
-TimeoutStartSec=120
+TimeoutStartSec=150

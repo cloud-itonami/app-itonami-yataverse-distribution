@@ -50,7 +50,7 @@ if [ "$apply" = false ]; then
     echo 'ready: reviewed WAN, existing owner, nginx and Reader health checked; no mapping changed'
     exit 0
 fi
-result=$(timeout 15 upnpc -u http://192.168.1.1:49152/gatedesc.xml \
+result=$(timeout 30 upnpc -u http://192.168.1.1:49152/gatedesc.xml \
     -a "$lan_ip" 443 443 TCP 900) || refuse 'mapping renewal failed'
 printf '%s\n' "$result" |
     grep -F "external $expected_wan:443 TCP is redirected to internal $lan_ip:443" >/dev/null ||
