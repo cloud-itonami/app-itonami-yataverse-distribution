@@ -130,5 +130,34 @@ esac
         self.assertEqual((r.returncode, calls), (2, 'apply\n'))
 
 
+class DnsHookBoundaries(unittest.TestCase):
+    def test_only_matching_domain_and_challenge_release_auth(self):
+        hook = str(Path(__file__).with_name('dns01_operator_hook.sh'))
+        with tempfile.TemporaryDirectory() as d:
+            env = dict(os.environ, CERTBOT_DOMAIN='other.example', CERTBOT_VALIDATION='a' * 43)
+            r = subprocess.run(['/bin/sh', hook, 'auth', d], env=env)
+            self.assertEqual(r.returncode, 2)
+            self.assertFalse((Path(d) / 'value').exists())
+            env['CERTBOT_DOMAIN'] = 'ipfs.yataverse.com'
+            (Path(d) / 'ready').write_text('b' * 43 + '\n')
+            child = subprocess.Popen(['/bin/sh', hook, 'auth', d], env=env)
+            try:
+                until = time.monotonic() + 2
+                while not (Path(d) / 'value').exists() and time.monotonic() < until:
+                    time.sleep(.01)
+                self.assertIsNone(child.poll())
+                self.assertEqual((Path(d) / 'value').read_text(), 'a' * 43 + '\n')
+                (Path(d) / 'ready').write_text('a' * 43 + '\n')
+                self.assertEqual(child.wait(timeout=3), 0)
+                r = subprocess.run(['/bin/sh', hook, 'cleanup', d], env=env)
+                self.assertEqual(r.returncode, 0)
+                self.assertFalse((Path(d) / 'value').exists())
+                self.assertFalse((Path(d) / 'ready').exists())
+            finally:
+                if child.poll() is None:
+                    child.terminate()
+                    child.wait()
+
+
 if __name__ == '__main__':
     unittest.main()
