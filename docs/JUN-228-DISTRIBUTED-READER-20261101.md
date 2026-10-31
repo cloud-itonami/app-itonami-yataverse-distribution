@@ -5,10 +5,49 @@
 [AWAI-102](https://linear.app/kotobalabs/issue/AWAI-102)、
 [AWAI-127](https://linear.app/kotobalabs/issue/AWAI-127)。
 
-## 結論と実測
+## 承認後の切替結果（2026-11-01 07:54–07:57 JST）
+
+**正規HTTPS Readerは復旧した。** `https://ipfs.yataverse.com/health` が応答し、
+DNS-only Aは `220.146.177.126`、TTL300秒。authoritative NS2台と
+1.1.1.1/8.8.8.8で一致。3 CID・合計786,474 bytesについて、公開IP指定での
+正規SNI/chain検証と、DNS公開後の外部CloudflareブラウザーからのSHA-256照合に成功した。
+このブラウザーは一時的な検証クライアントで、配信proxyではない。
+
+外部の最初の3試行は2成功・1件15秒timeout。失敗したCIDは30秒上限の明示再試行で
+7.06秒・262,158 bytes・CID一致。したがって3件の取得可能性は確認したが、
+15秒SLO・連続稼働・複数provider・稼働効率改善の資格は満たしていない。
+新しい運用CLIでも通常DNS経由の正規URLから1 CIDを15.782秒で照合した。
+
+所有者がPR113の本番切替手順を明示承認した後、WANと443所有者を再確認。
+既存Xavier443への900秒leaseを復旧し、既存5分timerのserviceにtask所有drop-inを追加。
+WAN/所有者/Reader identityのguardは維持した。最初の更新は非成功を返したが、
+SOAP読戻しで途中のmapping成功を確認。その後native CLIとserviceの両方が成功した。
+失敗原因をtimeoutだけに断定しない。bounded待ち時間を15→30秒、service予算を150秒にした。
+
+正規証明書のSANは `ipfs.yataverse.com`、満了は **2027-01-29 21:49:17 UTC**。
+DNS01のtask所有TXTは両authoritative/公開resolverで照合後に使い、取得後にrecord IDを
+確認して削除した。秘密鍵はXavierの既存証明書storeに保持し、export/commitしていない。
+既存CertbotにDNS automation pluginがなく、正規hostだけを許す300秒の手動hookを使用。
+これは自動更新ではない。[JUN-741](https://linear.app/kotobalabs/issue/JUN-741)に
+2026-12-30期限の更新資格化を登録した。
+
+実配備sourceは `3ed57b0`。script/hook/vhost/drop-inの実機SHA-256はsourceと一致。
+nginx構文・reload・正規TLS検証に成功し、443更新serviceはResult=success、
+ExecMainStatus=0、timer/nginxともactive。80/8443、他のSNI、peer filter、保持状態を変更せず、
+既存Python/NodeのReaderを保全した。native Awai実行への移行ではない。
+
+手順上の差分: 公開前に独立WANクライアントを試したが利用できなかったため、
+公開IP指定で正規TLSと3 CID照合が成功した条件を満たしてAを公開し、直後に外部ブラウザーで
+通常の正規URLを照合した。失敗した事前経路と再試行を記録し、独立WAN試験を
+公開前に済ませたとは記載しない。
+
+切替証跡: [evidence/jun-228-cutover-20261101.json](evidence/jun-228-cutover-20261101.json)。
+以下は切替前の調査記録として残す。
+
+## 切替前の結論と実測
 
 CID を共通の識別子にして HTTPS Reader と libp2p 配信を併用できる。
-ただし現在の実機では正規 DNS/TLS、複数 provider の配信、障害時継続は未成立。
+切替前の実機では正規 DNS/TLS、複数 provider の配信、障害時継続は未成立だった。
 下表は在庫数や設計上の可能性ではなく、今回の取得結果である。
 再確認で失敗した結果も残し、最初の成功を現在の健全性とみなさない。
 
@@ -135,5 +174,6 @@ native代替gateは未確立。README本文はowner判断のため変更して�
 実際のReaderもPythonが稼働していた。`.cljk`への移植やKubo native binaryの存在を
 Awai全体のAmu native資格と混同しない。稼働中の既存サービスは保全した。
 
-DNS/router/本番service/保持状態の変更はこの調査では **なし**。
-task所有probeとforwardだけを終了し、共有WIPと他agentのworktreeを残す。
+切替前の調査ではDNS/router/本番service/保持状態の変更はなかった。
+承認後の変更は冒頭の切替結果に記載した。task所有probeとforwardは終了し、
+共有WIPと他agentのworktreeを保全した。
