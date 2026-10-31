@@ -1,0 +1,180 @@
+{
+  "schema": "yataverse.jun228-readiness.v1",
+  "recorded_at": "2026-10-31T22:24:04.524153+00:00",
+  "source_base": "83e79c708e7bcbe1dd8e6528b6264664e2aa48d9",
+  "inventory": {
+    "sha256": "f616962875a0850efa824b53be45fc22edce39f4c280a32cb80b72a55b020188",
+    "rows": 821533,
+    "inventory_bytes": 88410406176,
+    "custody_audited": false
+  },
+  "initial_http_reads": [
+    {
+      "provider": "xavier",
+      "cid": "QmNLgJDagPKXUg4C1vKtvETQhTxEDScNYwEhYBke5uBan8",
+      "status": 200,
+      "bytes": 262158,
+      "expected_bytes": 262158,
+      "verified": true,
+      "seconds": 6.679769334034063
+    },
+    {
+      "provider": "jacob",
+      "cid": "QmNLgJDagPKXUg4C1vKtvETQhTxEDScNYwEhYBke5uBan8",
+      "error": "TimeoutError",
+      "detail": "timed out",
+      "seconds": 12.010609791963361
+    },
+    {
+      "provider": "xavier",
+      "cid": "QmNLhRArQBktFvoG2vgmoM3oMZC8vgWGhk9sM4Q4KkGUxh",
+      "status": 200,
+      "bytes": 262158,
+      "expected_bytes": 262158,
+      "verified": true,
+      "seconds": 9.226534000015818
+    },
+    {
+      "provider": "jacob",
+      "cid": "QmNLhRArQBktFvoG2vgmoM3oMZC8vgWGhk9sM4Q4KkGUxh",
+      "error": "TimeoutError",
+      "detail": "timed out",
+      "seconds": 12.003619124996476
+    },
+    {
+      "provider": "xavier",
+      "cid": "QmNLi4aMV82xKkoUbhQEM3rD4HfPHffu2Ye8SLU6nFKEBE",
+      "status": 200,
+      "bytes": 262158,
+      "expected_bytes": 262158,
+      "verified": true,
+      "seconds": 12.062653374974616
+    },
+    {
+      "provider": "jacob",
+      "cid": "QmNLi4aMV82xKkoUbhQEM3rD4HfPHffu2Ye8SLU6nFKEBE",
+      "error": "TimeoutError",
+      "detail": "timed out",
+      "seconds": 12.004177041933872
+    }
+  ],
+  "strict_probe": {
+    "schema": "yataverse.reader-probe.v1",
+    "measured_at": "2026-10-31T22:18:05.377666+00:00",
+    "scope": "operator-selected HTTP reads; no independence or retention proof",
+    "results": [
+      {
+        "provider": "xavier",
+        "origin": "task-owned SSH loopback forwarding",
+        "cid": "QmNLgJDagPKXUg4C1vKtvETQhTxEDScNYwEhYBke5uBan8",
+        "expected_bytes": 262158,
+        "verified": false,
+        "status": 200,
+        "error": "TimeoutError",
+        "seconds": 18.021894666948356
+      },
+      {
+        "provider": "jacob",
+        "origin": "task-owned SSH loopback forwarding",
+        "cid": "QmNLgJDagPKXUg4C1vKtvETQhTxEDScNYwEhYBke5uBan8",
+        "expected_bytes": 262158,
+        "verified": false,
+        "error": "HTTPError",
+        "status": 503,
+        "seconds": 15.062450791010633
+      }
+    ],
+    "verified_providers": 0
+  },
+  "strict_recheck": {
+    "schema": "yataverse.reader-probe.v1",
+    "measured_at": "2026-10-31T22:19:55.564409+00:00",
+    "scope": "operator-selected HTTP reads; no independence or retention proof",
+    "results": [
+      {
+        "provider": "xavier",
+        "origin": "task-owned SSH loopback forwarding",
+        "cid": "QmNLgJDagPKXUg4C1vKtvETQhTxEDScNYwEhYBke5uBan8",
+        "expected_bytes": 262158,
+        "verified": false,
+        "status": 200,
+        "error": "TimeoutError",
+        "seconds": 8.020866540959105
+      }
+    ],
+    "verified_providers": 0
+  },
+  "native_public_bitswap": [
+    {
+      "cid": "QmNLgJDagPKXUg4C1vKtvETQhTxEDScNYwEhYBke5uBan8",
+      "returncode": 1,
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "verified": false,
+      "seconds": 18.055832667043433,
+      "stderr": "Error: context deadline exceeded\n"
+    },
+    {
+      "cid": "QmNLhRArQBktFvoG2vgmoM3oMZC8vgWGhk9sM4Q4KkGUxh",
+      "returncode": 1,
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "verified": false,
+      "seconds": 18.031140250037424,
+      "stderr": "Error: context deadline exceeded\n"
+    },
+    {
+      "cid": "QmNLi4aMV82xKkoUbhQEM3rD4HfPHffu2Ye8SLU6nFKEBE",
+      "returncode": 1,
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "verified": false,
+      "seconds": 18.033980417065322,
+      "stderr": "Error: context deadline exceeded\n"
+    }
+  ],
+  "local_diagnostics": {
+    "xavier_reader": {
+      "status": 200,
+      "bytes": 262158,
+      "seconds": 0.171736,
+      "hash_checked_in_this_curl": false
+    },
+    "jacob_reader": {
+      "status": 503,
+      "seconds": 15.014557
+    },
+    "jacob_kubo_offline_block_get": {
+      "bytes": 262158,
+      "sha256": "0001cbb2b21e4630f872c22bdd727228a67d3c5908fa461e0f32778ecacae1ed",
+      "seconds": 0.09959454135969281,
+      "direct_and_all_pin_checks": "not pinned"
+    }
+  },
+  "ingress": {
+    "canonical_base_record_exists": false,
+    "old_wan_guard": "220.146.170.114",
+    "observed_wan": "220.146.177.126",
+    "upnp_tcp_80_443_8443": "714 NoSuchEntryInArray",
+    "443_timer": "active, renewal service refuses changed WAN",
+    "candidate_dry_run": "passed; no mapping changed",
+    "candidate_nginx_syntax": "passed using existing SSLIP certificate paths, not canonical TLS proof",
+    "canonical_certificate": "not obtained; SSH banner timed out before certbot invocation completed"
+  },
+  "qualification": {
+    "canonical_dns_tls_live": false,
+    "two_provider_delivery": false,
+    "provider_failure_survival": null,
+    "independent_failure_domains": null,
+    "native_awai_transport": false,
+    "hard_headroom_reservation": null,
+    "cpu_gpu_network_efficiency_gain": null,
+    "qualified_efficiency_gain": null
+  },
+  "mutations": {
+    "dns": false,
+    "router": false,
+    "production_services": false,
+    "retention": false
+  }
+}

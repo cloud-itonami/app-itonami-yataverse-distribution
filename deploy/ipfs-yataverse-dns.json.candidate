@@ -1,0 +1,8 @@
+{
+  "type": "A",
+  "name": "ipfs.yataverse.com",
+  "content": "220.146.177.126",
+  "ttl": 300,
+  "proxied": false,
+  "comment": "JUN-228 candidate: revalidate WAN, ingress, canonical TLS and CID readback before publication"
+}

@@ -1,0 +1,7 @@
+# Candidate drop-in for xavier-https-443-map.service, not installed.
+# Install the reviewed script at this path before enabling the drop-in.
+# A WAN change deliberately fails closed and requires a new reviewed value.
+[Service]
+ExecStart=
+ExecStart=/usr/local/sbin/yataverse-renew-public-https --apply 220.146.177.126
+TimeoutStartSec=120
