@@ -1,0 +1,194 @@
+{
+  "schema": "yataverse.jun228-cutover.v1",
+  "recorded_at": "2026-10-31T22:58:10.075415+00:00",
+  "deployed_source": "3ed57b0",
+  "owner_approval": "explicit approval of PR113 cutover in thread01a1921b-4978-78a2-a324-d64984e35df1",
+  "dns": {
+    "name": "ipfs.yataverse.com",
+    "type": "A",
+    "address": "220.146.177.126",
+    "ttl": 300,
+    "proxied": false,
+    "record_id": "5ef6c3467204007b01c5b3adc2725d42",
+    "readback_servers": [
+      "everton.ns.cloudflare.com",
+      "vivienne.ns.cloudflare.com",
+      "1.1.1.1",
+      "8.8.8.8"
+    ],
+    "all_match": true
+  },
+  "tls": {
+    "hostname": "ipfs.yataverse.com",
+    "not_after": "2027-01-29T21:49:17Z",
+    "certificate_sha256": "ea1ad21fefa95707da7132c4ec73e8df29c461041290a4ebcb6bfe9095c85b8d",
+    "strict_curl_verify_result": 0,
+    "automatic_renewal": false,
+    "renewal_issue": "JUN-741",
+    "renewal_due": "2026-12-30",
+    "task_dns01_txt_removed": true,
+    "runtime_challenge_files_empty": true
+  },
+  "deployment": {
+    "443_target": "existing Xavier192.168.1.28:443",
+    "lease_seconds": 900,
+    "existing_timer_interval_seconds": 300,
+    "guarded_service_result": "success",
+    "exec_main_status": 0,
+    "nginx_active": true,
+    "hashes": {
+      "443_renewer": "9971b67a0cdeae4ae7a292f91773e7ed6c6bf17f2f392138956ec34330d82235",
+      "dns01_hook": "f4613f921b8985d76aa778a207f01e33d5c839eb1dbb188aebd88628138169aa",
+      "canonical_vhost": "77470ff1ccfe9a1d74f7d512c5e12461493d189da912d911321f5dad79ccc59e",
+      "443_dropin": "25e7e5a6e48c3a77f7acb8a427c4f79108bbe81477f79584f9fd201036c02e6d"
+    }
+  },
+  "pre_dns_public_ip_reads": [
+    {
+      "cid": "QmNLgJDagPKXUg4C1vKtvETQhTxEDScNYwEhYBke5uBan8",
+      "transport": "canonical TLS via explicit public IPv4; same LAN client",
+      "exit": 0,
+      "seconds": 2.693768291035667,
+      "verified": true,
+      "status": 200,
+      "tls_verify": 0,
+      "download_bytes": 262158
+    },
+    {
+      "cid": "QmNLhRArQBktFvoG2vgmoM3oMZC8vgWGhk9sM4Q4KkGUxh",
+      "transport": "canonical TLS via explicit public IPv4; same LAN client",
+      "exit": 0,
+      "seconds": 1.7187399580143392,
+      "verified": true,
+      "status": 200,
+      "tls_verify": 0,
+      "download_bytes": 262158
+    },
+    {
+      "cid": "QmNLi4aMV82xKkoUbhQEM3rD4HfPHffu2Ye8SLU6nFKEBE",
+      "transport": "canonical TLS via explicit public IPv4; same LAN client",
+      "exit": 0,
+      "seconds": 14.870040667010471,
+      "verified": true,
+      "status": 200,
+      "tls_verify": 0,
+      "download_bytes": 262158
+    }
+  ],
+  "post_dns_client_probe": {
+    "schema": "yataverse.reader-probe.v1",
+    "measured_at": "2026-10-31T22:55:50.621684+00:00",
+    "scope": "operator-selected HTTP reads; no independence or retention proof",
+    "results": [
+      {
+        "provider": "canonical",
+        "origin": "https://ipfs.yataverse.com",
+        "cid": "QmNLgJDagPKXUg4C1vKtvETQhTxEDScNYwEhYBke5uBan8",
+        "expected_bytes": 262158,
+        "verified": true,
+        "status": 200,
+        "bytes": 262158,
+        "sha256": "0001cbb2b21e4630f872c22bdd727228a67d3c5908fa461e0f32778ecacae1ed",
+        "seconds": 15.782271540956572
+      }
+    ],
+    "verified_providers": 1
+  },
+  "offsite_browser": {
+    "vantage": "Cloudflare browser-rendering REST client, direct normal canonical HTTPS URL, no Host override or TLS bypass",
+    "first": {
+      "success": true,
+      "meta": {
+        "status": 200,
+        "title": "",
+        "headers": {
+          "access-control-allow-methods": "GET, OPTIONS",
+          "access-control-allow-origin": "*",
+          "cache-control": "public, max-age=60",
+          "content-type": "application/json",
+          "date": "Sat, 31 Oct 2026 22:54:34 GMT",
+          "server": "nginx/1.18.0 (Ubuntu)",
+          "x-content-type-options": "nosniff",
+          "x-yataverse-bytes-scope": "local-pinned-only"
+        },
+        "finalUrl": "https://ipfs.yataverse.com/health"
+      },
+      "results": [
+        {
+          "cid": "QmNLgJDagPKXUg4C1vKtvETQhTxEDScNYwEhYBke5uBan8",
+          "verified": false,
+          "error": "TimeoutError",
+          "seconds": 15.000599999999627
+        },
+        {
+          "cid": "QmNLhRArQBktFvoG2vgmoM3oMZC8vgWGhk9sM4Q4KkGUxh",
+          "status": 200,
+          "bytes": 262158,
+          "sha256": "00030fdbb19d898dce1466b03e5df5d8f362fde2579cfddf5afa4f3a108355f2",
+          "verified": true,
+          "seconds": 9.081400000000373
+        },
+        {
+          "cid": "QmNLi4aMV82xKkoUbhQEM3rD4HfPHffu2Ye8SLU6nFKEBE",
+          "status": 200,
+          "bytes": 262158,
+          "sha256": "0003ca8936bbc706feca68545e79bb40906f290eb4b764a604de6996456393b5",
+          "verified": true,
+          "seconds": 1.328
+        }
+      ]
+    },
+    "retry": {
+      "success": true,
+      "meta": {
+        "status": 200,
+        "title": "",
+        "headers": {
+          "access-control-allow-methods": "GET, OPTIONS",
+          "access-control-allow-origin": "*",
+          "cache-control": "public, max-age=60",
+          "content-type": "application/json",
+          "date": "Sat, 31 Oct 2026 22:55:27 GMT",
+          "server": "nginx/1.18.0 (Ubuntu)",
+          "x-content-type-options": "nosniff",
+          "x-yataverse-bytes-scope": "local-pinned-only"
+        },
+        "finalUrl": "https://ipfs.yataverse.com/health"
+      },
+      "result": {
+        "cid": "QmNLgJDagPKXUg4C1vKtvETQhTxEDScNYwEhYBke5uBan8",
+        "status": 200,
+        "bytes": 262158,
+        "sha256": "0001cbb2b21e4630f872c22bdd727228a67d3c5908fa461e0f32778ecacae1ed",
+        "verified": true,
+        "seconds": 7.06,
+        "retry_after_15s_timeout": true
+      }
+    },
+    "distinct_verified_cids": 3,
+    "verified_logical_bytes": 786474,
+    "first_attempt_success": 2,
+    "first_attempt_total": 3,
+    "retry_success": 1,
+    "retry_total": 1,
+    "fifteen_second_slo_qualified": false
+  },
+  "qualification": {
+    "canonical_dns_tls_reader": true,
+    "two_provider_delivery": false,
+    "independent_provider_failure_domains": null,
+    "native_awai_p2p_transport": false,
+    "hard_resource_reservations": null,
+    "qualified_efficiency_gain": null
+  },
+  "scope": {
+    "cloudflare_delivery_proxy": false,
+    "cloudflare_browser": "temporary diagnostic client only",
+    "native_scheduler_deployed": false,
+    "existing_python_node_services_preserved": true,
+    "80_8443_untouched": true,
+    "peer_filters_and_retention_untouched": true,
+    "standby_takeover_not_performed": true
+  },
+  "sequence_note": "Canonical strict TLS and3 CID reads via public IP passed before DNS publication. Independent-WAN browser verification followed DNS publication because no external DNS-override client was available; original failed external probes and15s timeout retained."
+}

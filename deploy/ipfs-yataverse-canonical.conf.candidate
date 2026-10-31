@@ -1,0 +1,28 @@
+# JUN-228 candidate only: issue canonical certificate and approve cutover first.
+# Protocol-service ingress, separate from static end-user app origins.
+limit_req_zone $binary_remote_addr zone=yataverse_canonical_reads:10m rate=8r/s;
+limit_conn_zone $binary_remote_addr zone=yataverse_canonical_connections:10m;
+server {
+    listen 443 ssl;
+    server_name ipfs.yataverse.com;
+    ssl_certificate /etc/letsencrypt/live/ipfs.yataverse.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/ipfs.yataverse.com/privkey.pem;
+    add_header X-Content-Type-Options nosniff always;
+    add_header X-Yataverse-Bytes-Scope local-pinned-only always;
+    add_header Access-Control-Allow-Origin "*" always;
+    add_header Access-Control-Allow-Methods "GET, OPTIONS" always;
+    proxy_hide_header Access-Control-Allow-Origin;
+    limit_req zone=yataverse_canonical_reads burst=16 nodelay;
+    limit_conn yataverse_canonical_connections 8;
+    proxy_connect_timeout 3s;
+    proxy_read_timeout 45s;
+    proxy_send_timeout 10s;
+    if ($request_method = OPTIONS) { return 204; }
+    if ($request_method != GET) { return 405; }
+    location = /health { proxy_pass http://127.0.0.1:8090; }
+    location = /api/v1/lake/blocks { proxy_pass http://127.0.0.1:8090; }
+    location ~ "^/ipfs/(Qm[1-9A-HJ-NP-Za-km-z]{44}|b[a-z2-7]{20,200})$" {
+        proxy_pass http://127.0.0.1:8090;
+    }
+    location / { return 404; }
+}
